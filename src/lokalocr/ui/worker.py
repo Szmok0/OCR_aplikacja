@@ -16,11 +16,11 @@ from PIL import Image
 from PySide6.QtCore import QObject, Signal
 from PySide6.QtGui import QImage
 
-from lokalocr.engines.base import OcrEngine
+from lokalocr.engines.base import OcrEngine, StructureEngine
 from lokalocr.errors import ErrorCode, LokalOcrError
 from lokalocr.loader import probe
 from lokalocr.logsafe import log_unexpected
-from lokalocr.pipeline import Pipeline, ProcessOptions, ProgressEvent
+from lokalocr.pipeline import Pipeline, ProcessOptions, ProgressEvent, process_full
 
 __all__ = ["WRITE_FAILED", "ExportController", "ProcessingController", "pil_to_qimage"]
 
@@ -46,8 +46,13 @@ class ProcessingController(QObject):
     probed = Signal(int, object, object)  # item id, page count | None, QImage | None
     probe_failed = Signal(int, str)
 
-    def __init__(self, engine_factory: Callable[[], OcrEngine]) -> None:
+    def __init__(
+        self,
+        engine_factory: Callable[[], OcrEngine],
+        structure_factory: Callable[[int], StructureEngine] | None = None,
+    ) -> None:
         super().__init__()
+        self._structure_factory = structure_factory
         self._engine_factory = engine_factory
         self.engine_factory = engine_factory
         self._engine: OcrEngine | None = None
@@ -88,15 +93,17 @@ class ProcessingController(QObject):
         def run() -> None:
             outcome: tuple[str, object]
             try:
-                if self._engine is None:
-                    self._engine = self._engine_factory()
-                pipeline = Pipeline(self._engine, workers=workers)
-                document = pipeline.process(
-                    path,
-                    options,
-                    on_progress=lambda e: self.progress.emit(item_id, e),
-                    cancel=cancel,
-                )
+                emit = lambda e: self.progress.emit(item_id, e)  # noqa: E731
+                if options.mode == "full" and self._structure_factory is not None:
+                    structure = self._structure_factory(workers)
+                    document = process_full(
+                        structure, path, options, on_progress=emit, cancel=cancel
+                    )
+                else:
+                    if self._engine is None:
+                        self._engine = self._engine_factory()
+                    pipeline = Pipeline(self._engine, workers=workers)
+                    document = pipeline.process(path, options, on_progress=emit, cancel=cancel)
                 outcome = ("ok", document)
             except LokalOcrError as exc:
                 outcome = ("error", exc.code.value)

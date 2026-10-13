@@ -452,6 +452,19 @@ class PagePreview(QFrame):
             scene.addItem(rect)
             self._overlay_items.append(rect)
 
+    def page_image(self, index: int) -> QImage | None:
+        """Preview image of a page (from the cache, else rendered now) for block crops."""
+        if self._path is None:
+            return None
+        cached = self._cache.get((self._path, index))
+        if cached is not None:
+            return cached[0]
+        try:
+            with open_document(self._path) as doc:
+                return pil_to_qimage(doc.render(index, PREVIEW_DPI).image)
+        except LokalOcrError:
+            return None
+
     def shutdown(self) -> None:
         self._pool.shutdown(wait=False, cancel_futures=True)
         self._cache.clear()

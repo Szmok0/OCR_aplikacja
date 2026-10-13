@@ -388,3 +388,51 @@ def overwrite_question(name: str) -> str:
 
 def minutes(n: int) -> str:
     return f"{n} min"
+
+
+# --- full mode: structure window, images (stage 6) ---------------------------------
+
+STRUCTURE_TREE = "Drzewo struktury dokumentu"
+BLOCK_PREVIEW = "Podgląd bloku"
+BLOCK_PROPERTIES = "Właściwości bloku"
+READ_ONLY_NOTE = "Tylko do odczytu"
+SELECT_BLOCK = "Wybierz element w drzewie, aby zobaczyć jego podgląd."
+NO_BLOCK_PREVIEW = "Brak podglądu dla tego elementu."
+BLOCK_TYPE = "Typ"
+BLOCK_TEXT = "Tekst"
+BLOCK_LEVEL = "Poziom"
+BLOCK_COORDS = "Współrzędne"
+SHOW_BLOCK_FRAME = "Pokaż ramkę bloku w podglądzie"
+CONFIDENCE = "Pewność rozpoznania"
+BLOCK_TYPE_LABELS: dict[str, str] = {
+    "heading": "Nagłówek",
+    "paragraph": "Akapit",
+    "list_item": "Element listy",
+    "table": "Tabela",
+    "figure": "Obraz",
+    "caption": "Podpis",
+}
+GROUP_LABELS: dict[str, str] = {"paragraph": "Akapit", "list_item": "Lista"}
+IMAGES_EMPTY = "Ten dokument nie zawiera obrazów."
+CHOOSE_IMAGES_FOLDER = "Wybierz folder, do którego zapisać obrazy"
+FULL_MODE_SLOW_NOTE = "Tryb pełny analizuje układ strony i trwa dłużej niż tryb podstawowy."
+
+
+def structure_title(name: str) -> str:
+    return f"Struktura dokumentu – {name}"
+
+
+def section_label(title: str) -> str:
+    return f"Sekcja: {title}"
+
+
+def page_label(number: int) -> str:
+    return f"Strona {number}"
+
+
+def coords(x: int, y: int, w: int, h: int) -> str:
+    return f"X: {x}   Y: {y}   Szer.: {w}   Wys.: {h}"
+
+
+def images_saved(n: int) -> str:
+    return f"Zapisano obrazy: {n}"

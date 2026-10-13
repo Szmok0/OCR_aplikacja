@@ -118,6 +118,7 @@ def test_markdown_structure_and_escaping() -> None:
     assert "\\*gwiazdka\\*" in md and "\\[nawias\\]" in md
     assert "| Nazwa | Cena |" in md and "35,50 \\| zł" in md
     assert "![Zdjęcie](obrazy/figure_1.png)" in md
+    assert "obrazy/cv_figure_1.png" in to_markdown(full_document(), image_stem="cv")
 
 
 def test_markdown_escapes_line_start_markers() -> None:
@@ -175,3 +176,28 @@ def test_searchable_pdf(tmp_path: Path) -> None:
         pdf.close()
     # JPEG-embedded pages stay small.
     assert out.stat().st_size < 1_000_000 * 2
+
+
+def test_markdown_and_html_write_images_folder(tmp_path: Path) -> None:
+    from lokalocr.exporters.html import export_html
+    from lokalocr.exporters.markdown import export_markdown
+
+    export_markdown(full_document(), tmp_path / "cv_ocr.md")
+    export_html(full_document(), tmp_path / "cv_ocr.html")
+    assert (tmp_path / "obrazy" / "cv_ocr_figure_1.png").read_bytes().startswith(b"\x89PNG")
+    html = (tmp_path / "cv_ocr.html").read_text(encoding="utf-8")
+    assert 'src="obrazy/cv_ocr_figure_1.png"' in html
+
+
+def test_images_never_overwritten_silently(tmp_path: Path) -> None:
+    from lokalocr.exporters.images import export_images
+
+    folder = tmp_path / "obrazy"
+    export_images(full_document(), folder, stem="a")
+    export_images(full_document(), folder, stem="a")  # identical content: fine
+    (folder / "a_figure_1.png").write_bytes(b"other image")
+    with pytest.raises(OutputExistsError):
+        export_images(full_document(), folder, stem="a")
+    export_images(full_document(), folder, stem="a", overwrite=True)
+    export_images(full_document(), folder, stem="b")
+    assert sorted(p.name for p in folder.iterdir()) == ["a_figure_1.png", "b_figure_1.png"]

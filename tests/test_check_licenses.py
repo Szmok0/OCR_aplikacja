@@ -59,3 +59,20 @@ def test_runtime_closure_excludes_dev_extra() -> None:
 
 def test_current_runtime_dependencies_pass() -> None:
     assert all(v.ok for v in cl.check()), [v for v in cl.check() if not v.ok]
+
+
+@pytest.mark.parametrize(
+    ("expr", "package"),
+    [
+        ("Apache-2.0 AND Apache-2.0 WITH LLVM-exception AND BSL-1.0 AND MIT", "torch"),
+        ("Apache-2.0 AND CNRI-Python", "regex"),
+    ],
+)
+def test_allowed_with_exceptions(expr: str, package: str) -> None:
+    assert cl.expression_allowed(expr, package)
+
+
+def test_extras_markers_are_parsed() -> None:
+    match = cl._REQ_NAME.match("docling-slim[standard, format-pdf]==2.1; extra == 'x'")
+    assert match is not None and match.group(1) == "docling-slim"
+    assert cl._EXTRA_MARKER.findall("extra == 'asr' or extra == \"all\"") == ["asr", "all"]

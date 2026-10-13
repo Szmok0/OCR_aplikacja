@@ -66,3 +66,22 @@ python scripts/measure_cer.py --compare       # porównanie wariantów obróbki 
 ```
 
 Wynik bazowy: [`docs/quality/cer-baseline.md`](quality/cer-baseline.md). Każda zmiana wpływająca na przetwarzanie powinna podać CER przed i po (§11).
+
+## Tryb pełny (Docling)
+
+Tryb pełny wymaga dodatkowych pakietów i modeli (ok. kilkaset MB):
+
+```bash
+# Linux: najpierw PyTorch w wersji CPU (bez bibliotek CUDA, które mają licencje własnościowe)
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+pip install -e ".[full]"
+python scripts/fetch_models.py           # pobiera modele do models/docling + MANIFEST.json
+python scripts/fetch_models.py --verify  # sprawdza sumy SHA-256
+```
+
+Na Windows `pip install -e ".[full]"` instaluje PyTorch CPU z PyPI.
+
+- `scripts/fetch_models.py` to **jedyne** miejsce z dostępem do sieci (§6.4); aplikacja czyta modele wyłącznie z `models/docling` (albo z folderu wskazanego zmienną `LOKALOCR_MODELS`).
+- Aplikacja uznaje modele za dostępne tylko wtedy, gdy wszystkie pliki z `MANIFEST.json` istnieją i mają właściwy rozmiar; inaczej opcja „Pełny” jest wyszarzona.
+- Docling działa w osobnym procesie (anulowanie = zakończenie procesu), z blokadą sieci i Tesseractem jako silnikiem OCR.
+- Testy trybu pełnego: `pytest -m "docling or models"` (w CI osobne zadanie `full-mode`).
