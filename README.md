@@ -6,6 +6,14 @@ Desktopowa aplikacja do OCR i konwersji dokumentów (PDF, PNG, JPG, TIFF → tek
 - Referencja UI: [`docs/ui-reference/ui-reference-v1.png`](docs/ui-reference/ui-reference-v1.png)
 - Środowisko deweloperskie: [`docs/dev-setup.md`](docs/dev-setup.md)
 
+## Uruchomienie
+
+```bash
+lokalocr-gui                              # okno aplikacji
+```
+
+Wymaga Tesseracta z danymi `pol` i `eng` (patrz [`docs/dev-setup.md`](docs/dev-setup.md)). Pakiet dla Windows z dołączonym Tesseractem powstanie w etapie 7.
+
 ## Wiersz poleceń
 
 ```bash
@@ -18,4 +26,6 @@ lokalocr --help
 
 Kody wyjścia: `0` — wszystko przetworzone, `1` — część plików się nie udała, `2` — błędne wywołanie lub brak plików, `3` — brak Tesseracta albo danych językowych, `130` — przerwano (Ctrl+C).
 
-Status: etap 2 (rdzeń OCR + wiersz poleceń).
+Status: etap 3 (okno główne: kolejka, wynik tekstowy, zapis TXT).
+
+Licencje komponentów: [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).

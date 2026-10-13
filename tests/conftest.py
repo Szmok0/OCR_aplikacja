@@ -7,6 +7,9 @@ from pathlib import Path
 
 import pytest
 
+# Qt tests run headless everywhere (CI sets this too).
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
 import make_fixtures as fx
 from lokalocr import netguard
 

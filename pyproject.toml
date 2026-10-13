@@ -15,16 +15,21 @@ dependencies = [
     "opencv-python-headless==5.0.0.93",  # Apache-2.0
     "pillow==12.3.0",                    # MIT-CMU
     "pypdfium2==5.14.0",                 # Apache-2.0 OR BSD-3-Clause (PDFium: BSD-3-Clause)
+    "PySide6-Essentials==6.12.0",        # LGPL-3.0-only (dynamically linked Qt)
 ]
 
 [project.scripts]
 lokalocr = "lokalocr.cli:main"
+
+[project.gui-scripts]
+lokalocr-gui = "lokalocr.ui.app:main"
 
 [project.optional-dependencies]
 dev = [
     "mypy==2.4.0",
     "pre-commit==4.7.0",
     "pytest==9.1.1",
+    "pytest-qt==4.5.0",
     "rapidfuzz==3.14.6",
     "ruff==0.17.0",
 ]
@@ -45,6 +50,9 @@ select = [
     "E", "W", "F", "I", "B", "UP", "SIM", "RUF", "N",
     "TID",  # flake8-tidy-imports: banned network APIs (§6.3)
 ]
+
+# `strings_pl as S` keeps UI code readable.
+ignore = ["N812"]
 
 # Polish typography uses the en dash in UI texts.
 allowed-confusables = ["–"]
@@ -70,6 +78,11 @@ ban-relative-imports = "all"
 # Synthetic document text reads better unwrapped.
 "scripts/make_fixtures.py" = ["E501"]
 "src/lokalocr/ui/strings_pl.py" = ["E501"]
+# Qt style sheet template lines.
+"src/lokalocr/ui/theme.py" = ["E501"]
+# Qt virtual method overrides keep their camelCase names.
+"src/lokalocr/ui/**" = ["N802"]
+"tests/test_ui.py" = ["N802"]
 
 # --- mypy -------------------------------------------------------------------
 
