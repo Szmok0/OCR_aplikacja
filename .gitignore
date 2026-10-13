@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+build/
+dist/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local models and generated test data (never committed)
+models/
+tests/fixtures/generated/
+
+# Never commit real documents or OCR output (§0.3, §9)
+/output/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

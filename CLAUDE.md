@@ -45,8 +45,8 @@ Pismo odręczne (słaby punkt wszystkich otwartych narzędzi), wierne odwzorowan
 ## 2. Użytkownik i środowisko
 
 - Pojedynczy użytkownik (właściciel) na własnym komputerze. Mimo to nie wymagaj uprawnień administratora ani instalacji sterowników czy usług, jeśli nie jest to konieczne (prostsza instalacja i mniejsze ryzyko).
-- System docelowy: **do ustalenia** (§14). Projektuj wieloplatformowo (Windows, macOS, Linux); pierwszy pakiet budujemy dla systemu, który wskaże właściciel.
-- Brak GPU nie może blokować pracy. Tryb podstawowy musi działać na samym CPU. GPU to opcjonalne przyspieszenie trybu pełnego.
+- System docelowy (ustalone, §14): **Windows** — głównie proste laptopy biurowe (np. Lenovo ThinkBook, bez dedykowanego GPU), rzadziej komputer stacjonarny z dedykowaną kartą graficzną. Pierwszy pakiet budujemy dla Windows; kod pozostaje wieloplatformowy (testy i CI także na Linuksie).
+- Brak GPU nie może blokować pracy. Tryb podstawowy musi działać na samym CPU, a tryb pełny musi być używalny na CPU słabego laptopa (choć wolniej). GPU to opcjonalne przyspieszenie trybu pełnego.
 
 ---
 
@@ -422,10 +422,10 @@ Każde rozszerzenie zaczyna się od krótkiej notatki w `docs/` (cel, ryzyko, li
 
 ## 14. Otwarte pytania i rzeczy do zweryfikowania
 
-**Do ustalenia z właścicielem:**
-- System docelowy (Windows / macOS / Linux) i czy komputer ma kartę graficzną.
-- Gdzie będzie hostowane repozytorium (np. GitHub) — od tego zależy konfiguracja CI i budowania pakietu. Dopóki nie wiadomo, nie dodawaj plików CI specyficznych dla platformy; przygotuj uruchamianie testów i lintu jako lokalne polecenia (np. `make check` lub skrypt).
-- Czy zastępczy projekt ikony aplikacji wystarczy, czy właściciel dostarczy własny.
+**Ustalone z właścicielem:**
+- System docelowy: **Windows**, głównie laptopy biurowe bez GPU; rzadziej desktop z dedykowaną kartą graficzną (§2).
+- Repozytorium: **GitHub** (`Szmok0/OCR_aplikacja`). CI: **GitHub Actions** (Windows + Linux). Te same sprawdzenia lokalnie: `python scripts/check.py`.
+- Ikona aplikacji: wystarczy **zastępczy projekt** przygotowany przez agenta (§7.8).
 
 **Do sprawdzenia w bieżącej dokumentacji przez agenta (nie zakładaj):**
 - Docling: praca offline z lokalnymi modelami, wybór Tesseracta jako silnika OCR, dostępność natywnego eksportu DOCX w bieżącej wersji.
