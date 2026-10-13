@@ -45,7 +45,14 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          choco install tesseract -y --no-progress
+          # The Chocolatey feed occasionally times out (HTTP 504): retry.
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
+            choco install tesseract -y --no-progress
+            if (Test-Path "C:\Program Files\Tesseract-OCR\tesseract.exe") { break }
+            Write-Host "choco install failed (attempt $attempt), retrying in 20 s"
+            Start-Sleep -Seconds 20
+          }
+          if (-not (Test-Path "C:\Program Files\Tesseract-OCR\tesseract.exe")) { throw "Tesseract install failed" }
           $tessdata = "C:\Program Files\Tesseract-OCR\tessdata"
           foreach ($lang in @("pol", "eng")) {
             $target = Join-Path $tessdata "$lang.traineddata"
