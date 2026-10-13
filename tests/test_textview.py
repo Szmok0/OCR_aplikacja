@@ -65,3 +65,28 @@ def test_simplified_keeps_short_lines_apart() -> None:
         "VAT 23%: 695,06 zł",
         "Słownie: trzy tysiące siedemset siedemnaście złotych",
     ]
+
+
+def test_simplified_keeps_address_lines_apart() -> None:
+    block = _block(
+        _line("Przykładowa Firma Sp. z o.o.", 100, 100, 280),
+        _line("ul. Łąkowa 12, 80-001 Gdańsk", 100, 130, 290),
+        _line("NIP 000-000-00-00", 100, 160, 170),
+    )
+    assert simplified(_doc(block)).splitlines() == [
+        "Przykładowa Firma Sp. z o.o.",
+        "ul. Łąkowa 12, 80-001 Gdańsk",
+        "NIP 000-000-00-00",
+    ]
+
+
+def test_simplified_joins_paragraph_split_across_blocks() -> None:
+    first = _block(
+        _line("Strony ustalają, że dzieło zostanie wydane Zamawiającemu w", 100, 100, 600),
+    )
+    second = _block(_line("terminie czternastu dni roboczych.", 100, 130, 350))
+    third = _block(_line("Zmiany umowy wymagają formy pisemnej pod rygorem.", 100, 200, 500))
+    assert simplified(_doc(first, second, third)) == (
+        "Strony ustalają, że dzieło zostanie wydane Zamawiającemu w terminie czternastu "
+        "dni roboczych.\n\nZmiany umowy wymagają formy pisemnej pod rygorem."
+    )
