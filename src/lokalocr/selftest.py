@@ -8,22 +8,47 @@ the owner after installing on a new machine. Exit code 0 = OK.
 from __future__ import annotations
 
 import json
+import os
 import sys
 import tempfile
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from PySide6.QtGui import QFont
 
 SAMPLE = "Zażółć gęślą jaźń 2024"
 
 
+# Windows fonts with Polish diacritics, loaded from file: Qt's offscreen
+# platform (used in CI) does not see the system font directory.
+_WINDOWS_FONTS = ("arial.ttf", "segoeui.ttf", "tahoma.ttf")
+
+
+def _sample_font() -> QFont:
+    from PySide6.QtGui import QFont, QFontDatabase
+
+    if sys.platform == "win32":
+        fonts = Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts"
+        for name in _WINDOWS_FONTS:
+            if not (fonts / name).is_file():
+                continue
+            font_id = QFontDatabase.addApplicationFont(str(fonts / name))
+            families = QFontDatabase.applicationFontFamilies(font_id) if font_id >= 0 else []
+            if families:
+                return QFont(families[0])
+    return QFont()
+
+
 def _render_sample(path: Path) -> None:
     from PySide6.QtCore import Qt
-    from PySide6.QtGui import QColor, QFont, QImage, QPainter
+    from PySide6.QtGui import QColor, QImage, QPainter
 
     image = QImage(1800, 300, QImage.Format.Format_RGB32)
     image.fill(QColor("white"))
     painter = QPainter(image)
-    font = QFont()
+    font = _sample_font()
     font.setPixelSize(90)
     painter.setFont(font)
     painter.setPen(QColor("black"))
