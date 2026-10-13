@@ -19,6 +19,7 @@ import argparse
 import hashlib
 import json
 import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -89,6 +90,11 @@ def main(argv: list[str] | None = None) -> int:
         with_rapidocr=False,
         with_easyocr=False,
     )
+    # Docling also fetches the ONNX variant of the layout model; LokalOCR uses the
+    # PyTorch one, so the extra copy is dropped to keep the package smaller.
+    for extra in folder.glob("*-onnx"):
+        if extra.is_dir():
+            shutil.rmtree(extra)
     manifest = write_manifest(folder)
     total = sum(e["size"] for e in json.loads(manifest.read_text(encoding="utf-8"))["files"])
     print(f"Models in {folder} ({total / 1e6:.0f} MB), manifest: {manifest}")

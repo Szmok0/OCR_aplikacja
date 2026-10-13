@@ -752,7 +752,7 @@ def test_open_images_folder(
     monkeypatch.setattr(QDesktopServices, "openUrl", lambda url: opened.append(url.toLocalFile()))
     window.open_images_folder()
     assert (out / "obrazy" / "cv_ocr_figure_1.png").exists()
-    assert opened == [str(out / "obrazy")]
+    assert [Path(p) for p in opened] == [out / "obrazy"]
 
 
 def test_full_mode_docx_has_structure(
