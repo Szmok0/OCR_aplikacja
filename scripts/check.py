@@ -13,6 +13,8 @@ STEPS: list[tuple[str, list[str]]] = [
     ("ruff lint", [sys.executable, "-m", "ruff", "check", "."]),
     ("ruff format", [sys.executable, "-m", "ruff", "format", "--check", "."]),
     ("mypy", [sys.executable, "-m", "mypy"]),
+    # The primary target is Windows; catch platform-specific typing on any OS.
+    ("mypy (win32)", [sys.executable, "-m", "mypy", "--platform", "win32"]),
     ("pytest", [sys.executable, "-m", "pytest"]),
     ("licenses", [sys.executable, "scripts/check_licenses.py"]),
 ]

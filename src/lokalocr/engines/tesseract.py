@@ -147,7 +147,7 @@ class TesseractEngine:
         kwargs: dict[str, object] = {}
         if sys.platform == "win32":
             # A GUI app must not flash a console window for every page.
-            kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW  # type: ignore[attr-defined]
+            kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
         try:
             proc = subprocess.Popen(
                 list(args),
