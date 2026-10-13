@@ -31,7 +31,10 @@ PERMISSIVE = frozenset(
         "Python-2.0",
         "Unlicense",
         "0BSD",
-        "HPND",  # Pillow
+        "HPND",
+        "MIT-CMU",  # Pillow
+        "Zlib",
+        "CC0-1.0",  # numpy (bundled pieces)
     }
 )
 
@@ -42,7 +45,14 @@ LGPL_ALLOWED = frozenset({"pyside6", "pyside6-essentials", "pyside6-addons", "sh
 
 # Packages whose metadata is missing or wrong, verified by hand.
 # Each entry: normalized name -> SPDX expression, with a comment on the source.
-OVERRIDES: dict[str, str] = {}
+OVERRIDES: dict[str, str] = {
+    # Metadata only has free text "BSD-3-Clause, Apache-2.0, dependency licenses".
+    # pypdfium2 itself is Apache-2.0 OR BSD-3-Clause; the bundled PDFium build
+    # licenses (BUILD_LICENSES/: pdfium, freetype, libjpeg-turbo, libpng, zlib,
+    # lcms, openjpeg, icu, abseil, agg, fast_float, simdutf, llvm-libc) were
+    # checked by hand in 5.14.0 and are all permissive.
+    "pypdfium2": "Apache-2.0 OR BSD-3-Clause",
+}
 
 _CLASSIFIER_TO_SPDX = {
     "MIT License": "MIT",
