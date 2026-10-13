@@ -14,8 +14,11 @@ from PySide6.QtGui import (
     QDesktopServices,
     QDragEnterEvent,
     QDropEvent,
+    QIcon,
+    QImage,
     QKeySequence,
     QMouseEvent,
+    QPixmap,
     QShortcut,
     QShowEvent,
 )
@@ -31,6 +34,8 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QListView,
+    QListWidget,
+    QListWidgetItem,
     QMainWindow,
     QMenu,
     QMessageBox,
@@ -46,22 +51,24 @@ from PySide6.QtWidgets import (
 
 from lokalocr import config, logsetup, tempdir
 from lokalocr.config import Settings
-from lokalocr.engines.base import OcrEngine
+from lokalocr.engines.base import OcrEngine, StructureEngine
 from lokalocr.errors import ErrorCode, LokalOcrError
 from lokalocr.exporters.common import OutputExistsError
 from lokalocr.exporters.docx import export_docx
 from lokalocr.exporters.html import export_html
+from lokalocr.exporters.images import IMAGES_DIR, export_images
 from lokalocr.exporters.markdown import export_markdown
 from lokalocr.exporters.pdf_text import PdfRenderer, export_searchable_pdf
 from lokalocr.exporters.txt import export_txt
 from lokalocr.loader import SUPPORTED_EXTENSIONS, detect_format
-from lokalocr.model import Document
+from lokalocr.model import Block, Document
 from lokalocr.pipeline import LANGUAGES, ProcessOptions, ProgressEvent
 from lokalocr.ui import icons, theme
 from lokalocr.ui import strings_pl as S
 from lokalocr.ui.help_window import HelpWindow
 from lokalocr.ui.queue_model import ITEM_ROLE, QueueItem, QueueModel, Status
 from lokalocr.ui.settings_dialog import SettingsDialog
+from lokalocr.ui.structure_window import StructureWindow
 from lokalocr.ui.widgets.basic import (
     DropZone,
     OfflineBadge,
@@ -127,6 +134,7 @@ class MainWindow(QMainWindow):
         full_mode_available: bool = False,
         settings: Settings | None = None,
         persist_settings: bool = False,
+        structure_factory: Callable[[int], StructureEngine] | None = None,
     ) -> None:
         super().__init__()
         self.setWindowTitle(S.APP_NAME)
@@ -145,7 +153,8 @@ class MainWindow(QMainWindow):
         self._clipboard_timer.timeout.connect(self._clear_clipboard)
 
         self.queue = QueueModel()
-        self.controller = ProcessingController(engine_factory)
+        self.controller = ProcessingController(engine_factory, structure_factory)
+        self._structure: StructureWindow | None = None
         self.controller.progress.connect(self._on_progress)
         self.controller.finished.connect(self._on_finished)
         self.controller.failed.connect(self._on_failed)
@@ -158,6 +167,7 @@ class MainWindow(QMainWindow):
         self._last_dir = Path.home()
         self._closing = False
         self._remove_after_cancel = False
+        self._images_folders: dict[int, Path] = {}
 
         central = QWidget()
         root = QVBoxLayout(central)
@@ -368,9 +378,15 @@ class MainWindow(QMainWindow):
         self.workspace_stack = QStackedWidget()
         self.preview = PagePreview()
         self.workspace_stack.addWidget(self.preview)
-        self.images_placeholder = muted_label(S.IMAGES_UNAVAILABLE)
-        self.images_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.workspace_stack.addWidget(self.images_placeholder)
+        self.gallery = QListWidget()
+        self.gallery.setObjectName("Gallery")
+        self.gallery.setViewMode(QListWidget.ViewMode.IconMode)
+        self.gallery.setIconSize(QSize(180, 180))
+        self.gallery.setResizeMode(QListWidget.ResizeMode.Adjust)
+        self.gallery.setSpacing(12)
+        self.gallery.setMovement(QListWidget.Movement.Static)
+        self.gallery.setAccessibleName(S.TAB_IMAGES_TIP)
+        self.workspace_stack.addWidget(self.gallery)
         layout.addWidget(self.workspace_stack, 1)
         return panel
 
@@ -409,6 +425,7 @@ class MainWindow(QMainWindow):
         self.open_images_btn.setProperty("iconName", "icon_folder_open")
         self.open_images_btn.setToolTip(S.IMAGES_UNAVAILABLE)
         self.open_images_btn.setEnabled(False)
+        self.open_images_btn.clicked.connect(self.open_images_folder)
         layout.addWidget(self.open_images_btn)
         layout.addStretch()
 
@@ -749,7 +766,9 @@ class MainWindow(QMainWindow):
         self.tabs.setTabEnabled(TAB_IMAGES, full)
         self.tabs.setTabToolTip(TAB_IMAGES, S.TAB_IMAGES_TIP if full else S.IMAGES_UNAVAILABLE)
         self.open_images_btn.setText(S.open_images(image_count))
-        self.open_images_btn.setEnabled(False)  # images folder arrives with full mode
+        self.open_images_btn.setEnabled(full and image_count > 0)
+        self.open_images_btn.setToolTip(S.OPEN_IMAGES_TIP if full else S.IMAGES_UNAVAILABLE)
+        self._fill_gallery(item.document if item is not None else None)
 
     # --- view tabs ----------------------------------------------------------------------
 
@@ -759,7 +778,79 @@ class MainWindow(QMainWindow):
         self.preview.set_overlay_visible(index == TAB_PREVIEW)
 
     def open_structure(self) -> None:
-        QMessageBox.information(self, S.STRUCTURE, S.STRUCTURE_UNAVAILABLE)
+        item = self.current_item()
+        if item is None or item.document is None or item.document.mode != "full":
+            return
+        if self._structure is not None:
+            self._structure.close()
+        self._structure = StructureWindow(
+            item.document, item.path, self.preview.page_image, parent=self
+        )
+        self._structure.block_selected.connect(self._on_structure_block)
+        self._structure.highlight_toggled.connect(
+            lambda on: self.preview.highlight(None) if not on else None
+        )
+        self._structure.show()
+
+    def _on_structure_block(self, page_index: int, block: Block) -> None:
+        """§7.4: selecting a block scrolls to it and highlights it in the main window."""
+        if self.preview.index != page_index:
+            self.preview.go_to(page_index)
+        if self._structure is not None and self._structure.highlight_enabled:
+            self.preview.highlight(block.bbox)
+            if block.bbox is not None and self.preview._pixmap_item is not None:
+                page = (
+                    self.preview._pages[page_index]
+                    if page_index < len(self.preview._pages)
+                    else None
+                )
+                if page is not None:
+                    sx = self.preview._pixmap_item.pixmap().width() / max(1, page.width)
+                    self.preview.view.centerOn(
+                        (block.bbox.x + block.bbox.width / 2) * sx,
+                        (block.bbox.y + block.bbox.height / 2) * sx,
+                    )
+
+    def _fill_gallery(self, document: Document | None) -> None:
+        self.gallery.clear()
+        if document is None:
+            return
+        for ref, data in document.images.items():
+            image = QImage.fromData(data)
+            if image.isNull():
+                continue
+            item = QListWidgetItem(QIcon(QPixmap.fromImage(image)), ref)
+            item.setToolTip(ref)
+            self.gallery.addItem(item)
+
+    def open_images_folder(self) -> None:
+        """Save the figures to <folder>/obrazy and open it (§7.3 zone 6)."""
+        item = self.current_item()
+        if item is None or item.document is None or not item.document.images:
+            return
+        folder = self._images_folders.get(item.id)
+        if folder is None or not folder.is_dir():
+            base = self.settings.output_dir or QFileDialog.getExistingDirectory(
+                self, S.CHOOSE_IMAGES_FOLDER, str(self._last_dir)
+            )
+            if not base:
+                return
+            folder = Path(base) / IMAGES_DIR
+            stem = Path(self.settings.output_name(item.path.stem, "x")).stem
+            try:
+                export_images(item.document, folder, stem=stem)
+            except OutputExistsError:
+                if QMessageBox.question(self, S.APP_NAME, S.overwrite_question(IMAGES_DIR)) != (
+                    QMessageBox.StandardButton.Yes
+                ):
+                    return
+                export_images(item.document, folder, stem=stem, overwrite=True)
+            except OSError:
+                QMessageBox.warning(self, S.APP_NAME, S.SAVE_FAILED)
+                return
+            self._images_folders[item.id] = folder
+            self.toast.show_message(S.images_saved(len(item.document.images)))
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
 
     # --- saving ------------------------------------------------------------------------
 
@@ -826,6 +917,8 @@ class MainWindow(QMainWindow):
                 export_docx(document, path, structure=structure, overwrite=overwrite)
             elif fmt == "md":
                 export_markdown(document, path, structure=structure, overwrite=overwrite)
+                if structure and document.mode == "full" and document.images:
+                    self._images_folders[item.id] = path.parent / IMAGES_DIR
             elif fmt == "html":
                 export_html(
                     document, path, structure=structure, title=item.path.stem, overwrite=overwrite

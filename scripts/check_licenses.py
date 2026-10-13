@@ -5,7 +5,7 @@ Walks the installed dependency closure of the ``lokalocr`` distribution
 license outside the allowlist. LGPL is accepted only for the dynamically
 linked Qt bindings listed in ``LGPL_ALLOWED``.
 
-Usage: ``python scripts/check_licenses.py``
+Usage: ``python scripts/check_licenses.py [--extras full]``
 """
 
 from __future__ import annotations
@@ -33,6 +33,8 @@ PERMISSIVE = frozenset(
         "0BSD",
         "HPND",
         "MIT-CMU",  # Pillow
+        "BSL-1.0",  # Boost (parts of torch)
+        "CNRI-Python",  # regex (old Python licence, permissive)
         "Zlib",
         "CC0-1.0",  # numpy (bundled pieces)
     }
@@ -83,6 +85,8 @@ _FREE_TEXT_TO_SPDX = {
     "3-clause bsd": "BSD-3-Clause",
     "bsd-2-clause": "BSD-2-Clause",
     "apache 2.0": "Apache-2.0",
+    "apache 2.0 license": "Apache-2.0",
+    "apache license": "Apache-2.0",
     "apache-2.0": "Apache-2.0",
     "apache license 2.0": "Apache-2.0",
     "apache license, version 2.0": "Apache-2.0",
@@ -145,7 +149,8 @@ def expression_allowed(expr: str, package: str) -> bool:
     required = _split_top_level(expr, "AND")
     if len(required) > 1:
         return all(expression_allowed(r, package) for r in required)
-    spdx = expr.removesuffix("+")
+    # "Apache-2.0 WITH LLVM-exception": an exception only adds permissions.
+    spdx = expr.split(" WITH ", 1)[0].strip().removesuffix("+")
     if spdx in PERMISSIVE:
         return True
     return spdx in LGPL and normalize_name(package) in LGPL_ALLOWED
@@ -179,17 +184,31 @@ def license_of(dist: metadata.Distribution) -> str:
     return _FREE_TEXT_TO_SPDX.get(first_line, free_text.splitlines()[0] if free_text else "UNKNOWN")
 
 
-_REQ_NAME = re.compile(r"^\s*([A-Za-z0-9][A-Za-z0-9._-]*)")
-_EXTRA_MARKER = re.compile(r"\bextra\s*==")
+_REQ_NAME = re.compile(r"^\s*([A-Za-z0-9][A-Za-z0-9._-]*)\s*(?:\[([^\]]*)\])?")
+_EXTRA_MARKER = re.compile(r"\bextra\s*==\s*['\"]([^'\"]+)['\"]")
 
 
-def runtime_closure(root: str = ROOT_DIST) -> list[metadata.Distribution]:
-    """Installed runtime dependencies of ``root`` (transitively), excluding extras."""
+def _norm_extra(extra: str) -> str:
+    return re.sub(r"[-_.]+", "-", extra.strip()).lower()
+
+
+def runtime_closure(
+    root: str = ROOT_DIST, extras: frozenset[str] = frozenset()
+) -> list[metadata.Distribution]:
+    """Installed runtime dependencies of ``root`` (transitively).
+
+    Extras are followed only where a parent requests them (``pkg[extra]``);
+    the root's own optional extras (e.g. ``dev``) are not part of the closure.
+    """
     seen: dict[str, metadata.Distribution] = {}
-    stack = [root]
+    done: set[tuple[str, str]] = set()  # (package, extra or "")
+    stack: list[tuple[str, frozenset[str]]] = [(root, frozenset(_norm_extra(e) for e in extras))]
     while stack:
-        name = normalize_name(stack.pop())
-        if name in seen:
+        raw_name, extras = stack.pop()
+        name = normalize_name(raw_name)
+        todo = {""} | set(extras)
+        todo -= {e for (n, e) in done if n == name}
+        if not todo:
             continue
         try:
             dist = metadata.distribution(name)
@@ -197,32 +216,48 @@ def runtime_closure(root: str = ROOT_DIST) -> list[metadata.Distribution]:
             # Platform-specific requirement that is not installed here.
             continue
         seen[name] = dist
+        done.update((name, e) for e in todo)
         for req in dist.requires or []:
-            if _EXTRA_MARKER.search(req):
+            requirement, _, marker = req.partition(";")
+            marker_extras = {_norm_extra(e) for e in _EXTRA_MARKER.findall(marker)}
+            if marker_extras and not (marker_extras & todo):
                 continue
-            match = _REQ_NAME.match(req)
+            if not marker_extras and "" not in todo:
+                continue  # base requirements were handled on an earlier visit
+            match = _REQ_NAME.match(requirement)
             if match:
-                stack.append(match.group(1))
+                wanted = frozenset(
+                    _norm_extra(e) for e in (match.group(2) or "").split(",") if e.strip()
+                )
+                stack.append((match.group(1), wanted))
     seen.pop(normalize_name(root), None)
     return sorted(seen.values(), key=lambda d: normalize_name(d.metadata["Name"]))
 
 
-def check(root: str = ROOT_DIST) -> list[Verdict]:
+def check(root: str = ROOT_DIST, extras: frozenset[str] = frozenset()) -> list[Verdict]:
     verdicts = []
-    for dist in runtime_closure(root):
+    for dist in runtime_closure(root, extras):
         name = dist.metadata["Name"]
         lic = license_of(dist)
         verdicts.append(Verdict(name, lic, expression_allowed(lic, name)))
     return verdicts
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Check runtime dependency licences.")
+    parser.add_argument(
+        "--extras", nargs="*", default=[],
+        help="also check these optional extras of lokalocr (e.g. full)",
+    )  # fmt: skip
+    args = parser.parse_args(argv)
     try:
         metadata.distribution(ROOT_DIST)
     except metadata.PackageNotFoundError:
         print(f"{ROOT_DIST} is not installed; run `pip install -e .` first.", file=sys.stderr)
         return 2
-    verdicts = check()
+    verdicts = check(extras=frozenset(args.extras))
     for v in verdicts:
         print(f"{'ok ' if v.ok else 'BAD'}  {v.package:<30} {v.license}")
     bad = [v for v in verdicts if not v.ok]

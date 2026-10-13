@@ -26,6 +26,12 @@ lokalocr = "lokalocr.cli:main"
 lokalocr-gui = "lokalocr.ui.app:main"
 
 [project.optional-dependencies]
+# Full mode (§5): document structure with Docling (MIT) and local models.
+# Pulls PyTorch (BSD-3-Clause); on Linux install the CPU build first, e.g.
+# pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+full = [
+    "docling==2.138.0",
+]
 dev = [
     "mypy==2.4.0",
     "pre-commit==4.7.0",
@@ -76,6 +82,7 @@ ban-relative-imports = "all"
 # Developer scripts run outside the app; fetch_models.py is the one place
 # allowed to download (§6.4).
 "scripts/fetch_models.py" = ["TID251"]
+"scripts/model_licenses.py" = ["TID251", "E501"]
 # Synthetic document text reads better unwrapped.
 "scripts/make_fixtures.py" = ["E501"]
 "src/lokalocr/ui/strings_pl.py" = ["E501"]
@@ -94,7 +101,8 @@ files = ["src", "tests", "scripts"]
 mypy_path = ["src", "scripts"]
 
 [[tool.mypy.overrides]]
-module = ["pypdfium2", "pypdfium2.*", "docx", "docx.*"]
+module = ["pypdfium2", "pypdfium2.*", "docx", "docx.*", "docling", "docling.*",
+          "docling_core", "docling_core.*", "huggingface_hub", "huggingface_hub.*"]
 ignore_missing_imports = true
 
 # --- pytest -----------------------------------------------------------------
@@ -108,4 +116,5 @@ markers = [
     "models: needs the full-mode models in models/ (optional, run locally)",
     "tesseract: needs the tesseract binary with pol+eng data",
     "slow: takes more than a few seconds",
+    "docling: needs the docling package (pip install -e .[full])",
 ]

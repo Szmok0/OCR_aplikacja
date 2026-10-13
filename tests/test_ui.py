@@ -18,7 +18,7 @@ from pytestqt.qtbot import QtBot
 
 from lokalocr import tempdir
 from lokalocr.errors import CancelledError, ErrorCode
-from lokalocr.model import BBox, Block, BlockType, Line, Page
+from lokalocr.model import BBox, Block, BlockType, Document, Line, Page
 from lokalocr.ui import strings_pl as S
 from lokalocr.ui import theme
 from lokalocr.ui.app import create_app
@@ -596,3 +596,186 @@ def test_engine_banner(qtbot: QtBot) -> None:
     ok.check_engine()
     qtbot.wait(200)
     assert not ok.banner.isVisible()
+
+
+# --- stage 6: full mode ----------------------------------------------------------------
+
+
+class FakeStructureEngine:
+    """Returns a structured document like Docling would (no models)."""
+
+    name = "fake-structure"
+
+    def __init__(self, workers: int = 1) -> None:
+        self.workers = workers
+
+    def is_available(self) -> bool:
+        return True
+
+    def analyze(
+        self,
+        path: Path,
+        lang: str,
+        *,
+        cancel: threading.Event | None = None,
+        on_progress: object = None,
+    ) -> Document:
+        from lokalocr.model import Table, TableCell
+
+        if callable(on_progress):
+            on_progress(0, 1)
+            on_progress(1, 1)
+        png = io.BytesIO()
+        Image.new("RGB", (60, 40), (20, 120, 240)).save(png, "PNG")
+        blocks = [
+            Block(BlockType.HEADING, "Zofia Przykładowa", level=1, bbox=BBox(50, 40, 250, 20)),
+            Block(BlockType.HEADING, "Doświadczenie", level=2, bbox=BBox(50, 80, 150, 15)),
+            Block(
+                BlockType.PARAGRAPH,
+                "Księgowa z doświadczeniem.",
+                bbox=BBox(50, 100, 400, 30),
+                confidence=0.93,
+            ),
+            Block(BlockType.LIST_ITEM, "Rozliczenia VAT", bbox=BBox(60, 140, 200, 12)),
+            Block(BlockType.LIST_ITEM, "Płace", bbox=BBox(60, 155, 200, 12)),
+            Block(
+                BlockType.TABLE,
+                bbox=BBox(50, 200, 400, 60),
+                table=Table(
+                    2,
+                    2,
+                    [
+                        TableCell(0, 0, "Nazwa"),
+                        TableCell(0, 1, "Cena"),
+                        TableCell(1, 0, "Segregatory"),
+                        TableCell(1, 1, "35,50"),
+                    ],
+                ),
+            ),
+            Block(BlockType.FIGURE, bbox=BBox(50, 300, 120, 80), image_ref="figure_1.png"),
+            Block(BlockType.CAPTION, "Rys. 1. Logo", bbox=BBox(50, 385, 120, 10)),
+        ]
+        return Document(
+            pages=[Page(1, 595, 842, 72, blocks)],
+            lang=lang,
+            mode="full",
+            images={"figure_1.png": png.getvalue()},
+        )
+
+
+def make_full_window(qtbot: QtBot) -> MainWindow:
+    create_app(["test"])
+    window = MainWindow(
+        lambda: FakeEngine(), full_mode_available=True, structure_factory=FakeStructureEngine
+    )
+    qtbot.addWidget(window)
+    window.show()
+    return window
+
+
+def test_full_mode_document(qtbot: QtBot, files: Path) -> None:
+    window = make_full_window(qtbot)
+    assert window.full_radio.isEnabled()
+    window.full_radio.setChecked(True)
+    window.add_paths([files / "cv.png"])
+    wait_idle(qtbot, window)
+    item = window.queue.items()[0]
+    assert item.status is Status.DONE and item.document is not None
+    assert item.document.mode == "full"
+    assert window.structure_btn.isEnabled()
+    assert window.keep_structure_cb.isEnabled()
+    assert window.tabs.isTabEnabled(2) and window.tabs.tabText(2) == "Obrazy (1)"
+    window.tabs.setCurrentIndex(2)
+    assert window.gallery.count() == 1
+    assert window.open_images_btn.isEnabled()
+
+
+def test_structure_window(qtbot: QtBot, files: Path) -> None:
+    window = make_full_window(qtbot)
+    window.full_radio.setChecked(True)
+    window.add_paths([files / "cv.png"])
+    wait_idle(qtbot, window)
+    window.open_structure()
+    structure = window._structure
+    assert structure is not None and structure.isVisible()
+    assert structure.windowTitle() == "Struktura dokumentu – cv.png"
+    page = structure.tree.topLevelItem(0)
+    assert page is not None and page.text(0) == "Strona 1"
+    labels: list[str] = []
+
+    def walk(node: object) -> None:
+        from PySide6.QtWidgets import QTreeWidgetItem
+
+        assert isinstance(node, QTreeWidgetItem)
+        for i in range(node.childCount()):
+            child = node.child(i)
+            if child is not None:
+                labels.append(child.text(0))
+                walk(child)
+
+    walk(page)
+    assert "Sekcja: Zofia Przykładowa" in labels
+    assert "Sekcja: Doświadczenie" in labels
+    assert "Lista (2)" in labels
+    assert any(lbl.startswith("Tabela") for lbl in labels)
+    assert "Obraz" in labels
+    # Select the paragraph: properties are shown and the main preview highlights it.
+    from PySide6.QtWidgets import QTreeWidgetItemIterator
+
+    it = QTreeWidgetItemIterator(structure.tree)
+    while it.value() is not None:
+        node = it.value()
+        if node.text(0).startswith("Akapit:"):
+            structure.tree.setCurrentItem(node)
+            break
+        it += 1
+    assert structure.type_label.text() == "Akapit"
+    assert structure.conf_label.text() == "93%"
+    assert window.preview._highlight == BBox(50, 100, 400, 30)
+
+
+def test_open_images_folder(
+    qtbot: QtBot,
+    files: Path,
+    tmp_path_factory: pytest.TempPathFactory,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from PySide6.QtGui import QDesktopServices
+
+    out = tmp_path_factory.mktemp("out")
+    window = make_full_window(qtbot)
+    window.full_radio.setChecked(True)
+    window.add_paths([files / "cv.png"])
+    wait_idle(qtbot, window)
+    opened: list[str] = []
+    monkeypatch.setattr(QFileDialog, "getExistingDirectory", lambda *a, **k: str(out))
+    monkeypatch.setattr(QDesktopServices, "openUrl", lambda url: opened.append(url.toLocalFile()))
+    window.open_images_folder()
+    assert (out / "obrazy" / "cv_ocr_figure_1.png").exists()
+    assert opened == [str(out / "obrazy")]
+
+
+def test_full_mode_docx_has_structure(
+    qtbot: QtBot,
+    files: Path,
+    tmp_path_factory: pytest.TempPathFactory,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from docx import Document as DocxDocument
+
+    out = tmp_path_factory.mktemp("out") / "cv_ocr.docx"
+    window = make_full_window(qtbot)
+    window.full_radio.setChecked(True)
+    window.add_paths([files / "cv.png"])
+    wait_idle(qtbot, window)
+    _save_to(monkeypatch, out)
+    window.save("docx")
+    doc = DocxDocument(str(out))
+    assert len(doc.tables) == 1 and len(doc.inline_shapes) == 1
+    assert any(p.style is not None and p.style.name == "Heading 1" for p in doc.paragraphs)
+    # "Zachowaj strukturę" off: plain paragraphs only.
+    window.keep_structure_cb.setChecked(False)
+    out.unlink()
+    window.save("docx")
+    plain = DocxDocument(str(out))
+    assert not plain.tables and not plain.inline_shapes

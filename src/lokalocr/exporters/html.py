@@ -6,7 +6,7 @@ from html import escape
 from pathlib import Path
 
 from lokalocr.exporters.common import write_atomic
-from lokalocr.exporters.markdown import IMAGES_DIR
+from lokalocr.exporters.images import IMAGES_DIR, export_images, image_name
 from lokalocr.exporters.structure import items
 from lokalocr.model import Document
 
@@ -23,7 +23,9 @@ figcaption, .caption { color: #5F6876; font-style: italic; }
 """
 
 
-def to_html(document: Document, *, structure: bool = True, title: str = "LokalOCR") -> str:
+def to_html(
+    document: Document, *, structure: bool = True, title: str = "LokalOCR", image_stem: str = ""
+) -> str:
     body: list[str] = []
     in_list = False
     for item in items(document, structure=structure):
@@ -48,7 +50,7 @@ def to_html(document: Document, *, structure: bool = True, title: str = "LokalOC
             body.append("<table>\n" + "\n".join(rows) + "\n</table>")
         elif item.kind == "figure" and item.image_ref:
             alt = escape(item.text, quote=True)
-            src = escape(f"{IMAGES_DIR}/{item.image_ref}", quote=True)
+            src = escape(f"{IMAGES_DIR}/{image_name(image_stem, item.image_ref)}", quote=True)
             body.append(f'<figure><img src="{src}" alt="{alt}"></figure>')
         elif item.kind == "caption":
             body.append(f'<p class="caption">{escape(item.text)}</p>')
@@ -72,5 +74,8 @@ def export_html(
     title: str = "LokalOCR",
     overwrite: bool = False,
 ) -> Path:
-    data = to_html(document, structure=structure, title=title).encode("utf-8")
-    return write_atomic(path, data, overwrite=overwrite)
+    html = to_html(document, structure=structure, title=title, image_stem=path.stem)
+    result = write_atomic(path, html.encode("utf-8"), overwrite=overwrite)
+    if structure and document.mode == "full" and document.images:
+        export_images(document, path.parent / IMAGES_DIR, stem=path.stem, overwrite=overwrite)
+    return result

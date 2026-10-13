@@ -118,7 +118,12 @@ def test_missing_input(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> No
     assert "nie znaleziono" in capsys.readouterr().err
 
 
-def test_full_mode_not_available_yet(workdir: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_full_mode_unavailable_without_models(
+    workdir: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from lokalocr.engines import docling_engine
+
+    monkeypatch.setattr(docling_engine, "find_models_dir", lambda: None)
     assert cli.main([str(workdir / "cv.png"), "--mode", "full"]) == cli.ExitCode.USAGE
     assert "Tryb pełny jest niedostępny" in capsys.readouterr().err
 

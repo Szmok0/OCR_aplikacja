@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
-from lokalocr.engines.base import OcrEngine
+from lokalocr.engines.base import OcrEngine, StructureEngine
 from lokalocr.errors import CancelledError, EmptyResultError
 from lokalocr.loader import open_document
 from lokalocr.model import Document, Mode, Page
@@ -188,3 +188,41 @@ class Pipeline:
         if not document.plain_text().strip():
             raise EmptyResultError("no text recognised")
         return document
+
+
+def process_full(
+    engine: StructureEngine,
+    path: Path,
+    options: ProcessOptions,
+    *,
+    on_progress: ProgressCallback | None = None,
+    cancel: threading.Event | None = None,
+) -> Document:
+    """Full mode (§5): structure analysis by a :class:`StructureEngine`."""
+    notify = on_progress or (lambda _e: None)
+    started = time.monotonic()
+    notify(ProgressEvent("loading", 0, 0, 0.0, None))
+    first_page_at: list[float] = []
+
+    def progress(done: int, total: int) -> None:
+        if done == 0:
+            first_page_at.append(time.monotonic())  # models loaded, pages start now
+            notify(ProgressEvent("layout", 1, total, 2.0, None))
+            return
+        begin = first_page_at[0] if first_page_at else started
+        per_page = (time.monotonic() - begin) / done
+        eta = per_page * (total - done)
+        pct = 2.0 + 97.0 * done / max(1, total)
+        notify(ProgressEvent("layout", min(done + 1, total), total, min(99.0, pct), eta))
+
+    document = engine.analyze(path, options.lang, cancel=cancel, on_progress=progress)
+    document.mode = "full"
+    notify(ProgressEvent("layout", document.page_count, document.page_count, 100.0, 0.0))
+    _log.info(
+        "Full-mode analysis finished: pages=%d seconds=%.1f blocks=%d images=%d",
+        document.page_count, time.monotonic() - started,
+        sum(len(p.blocks) for p in document.pages), len(document.images),
+    )  # fmt: skip
+    if not document.plain_text().strip() and not document.images:
+        raise EmptyResultError("no content recognised")
+    return document

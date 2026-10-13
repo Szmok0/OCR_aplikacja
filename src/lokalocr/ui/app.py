@@ -10,6 +10,7 @@ from lokalocr import netguard
 
 netguard.install()
 
+import multiprocessing  # noqa: E402
 import sys  # noqa: E402
 from collections.abc import Sequence  # noqa: E402
 from pathlib import Path  # noqa: E402
@@ -49,12 +50,22 @@ def create_app(argv: Sequence[str] | None = None, settings: Settings | None = No
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    # Full mode runs Docling in a spawned child process; needed for frozen builds.
+    multiprocessing.freeze_support()
     settings = config.load()
     logsetup.configure(settings.log_level)
     tempdir.set_root(Path(settings.temp_dir) if settings.temp_dir else None)
     tempdir.cleanup()  # leftovers from a previous crash
     app = create_app(argv, settings)
-    window = MainWindow(_engine, settings=settings, persist_settings=True)
+    from lokalocr.engines.docling_engine import DoclingEngine, is_available
+
+    window = MainWindow(
+        _engine,
+        full_mode_available=is_available(),
+        settings=settings,
+        persist_settings=True,
+        structure_factory=lambda workers: DoclingEngine(threads=workers),
+    )
     window.show()
     window.check_engine()
     try:

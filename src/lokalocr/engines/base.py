@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import threading
+from collections.abc import Callable
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
@@ -39,7 +40,12 @@ class StructureEngine(Protocol):
     name: str
 
     def analyze(
-        self, path: Path, lang: str, *, cancel: threading.Event | None = None
+        self,
+        path: Path,
+        lang: str,
+        *,
+        cancel: threading.Event | None = None,
+        on_progress: Callable[[int, int], None] | None = None,
     ) -> Document: ...
 
     def is_available(self) -> bool: ...

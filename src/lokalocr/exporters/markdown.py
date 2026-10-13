@@ -6,12 +6,11 @@ import re
 from pathlib import Path
 
 from lokalocr.exporters.common import write_atomic
+from lokalocr.exporters.images import IMAGES_DIR, export_images, image_name
 from lokalocr.exporters.structure import items
 from lokalocr.model import Document
 
-__all__ = ["IMAGES_DIR", "export_markdown", "to_markdown"]
-
-IMAGES_DIR = "obrazy"
+__all__ = ["export_markdown", "to_markdown"]
 
 _SPECIAL_AT_START = re.compile(r"^(\s*)([#>*+\-]|\d+[.)])(\s)")
 
@@ -27,7 +26,7 @@ def _cell(text: str) -> str:
     return _escape(" ".join(text.split())).replace("|", "\\|")
 
 
-def to_markdown(document: Document, *, structure: bool = True) -> str:
+def to_markdown(document: Document, *, structure: bool = True, image_stem: str = "") -> str:
     parts: list[str] = []
     for item in items(document, structure=structure):
         if item.kind == "heading":
@@ -41,7 +40,8 @@ def to_markdown(document: Document, *, structure: bool = True) -> str:
             lines += ["| " + " | ".join(_cell(c) for c in r) + " |" for r in rows[1:]]
             parts.append("\n".join(lines))
         elif item.kind == "figure" and item.image_ref:
-            parts.append(f"![{_escape(item.text)}]({IMAGES_DIR}/{item.image_ref})")
+            src = f"{IMAGES_DIR}/{image_name(image_stem, item.image_ref)}"
+            parts.append(f"![{_escape(item.text)}]({src})")
         elif item.kind == "caption":
             parts.append(f"*{_escape(item.text)}*")
         else:
@@ -57,5 +57,8 @@ def to_markdown(document: Document, *, structure: bool = True) -> str:
 def export_markdown(
     document: Document, path: Path, *, structure: bool = True, overwrite: bool = False
 ) -> Path:
-    data = to_markdown(document, structure=structure).encode("utf-8")
-    return write_atomic(path, data, overwrite=overwrite)
+    data = to_markdown(document, structure=structure, image_stem=path.stem).encode("utf-8")
+    result = write_atomic(path, data, overwrite=overwrite)
+    if structure and document.mode == "full" and document.images:
+        export_images(document, path.parent / IMAGES_DIR, stem=path.stem, overwrite=overwrite)
+    return result
