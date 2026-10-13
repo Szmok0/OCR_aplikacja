@@ -23,11 +23,17 @@ from pathlib import Path  # noqa: E402
 from lokalocr import __version__  # noqa: E402
 from lokalocr.errors import ErrorCode, LokalOcrError  # noqa: E402
 from lokalocr.exporters.common import default_output_name  # noqa: E402
+from lokalocr.exporters.docx import export_docx  # noqa: E402
+from lokalocr.exporters.html import export_html, to_html  # noqa: E402
+from lokalocr.exporters.markdown import export_markdown, to_markdown  # noqa: E402
+from lokalocr.exporters.pdf_text import export_searchable_pdf  # noqa: E402
 from lokalocr.exporters.txt import export_txt, to_txt  # noqa: E402
 from lokalocr.loader import SUPPORTED_EXTENSIONS  # noqa: E402
 from lokalocr.logsafe import log_unexpected  # noqa: E402
+from lokalocr.model import Document  # noqa: E402
 from lokalocr.pipeline import LANGUAGES, Pipeline, ProcessOptions, ProgressEvent  # noqa: E402
 from lokalocr.preprocess import PreprocessOptions  # noqa: E402
+from lokalocr.textview import TextLayout  # noqa: E402
 from lokalocr.ui.strings_pl import STAGE_LABELS, error_message  # noqa: E402
 
 __all__ = ["ExitCode", "main"]
@@ -43,7 +49,7 @@ class ExitCode(IntEnum):
     CANCELLED = 130
 
 
-FORMATS = ("txt",)
+FORMATS = ("txt", "docx", "pdf", "md", "html")
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,6 +90,27 @@ def _plan(files: list[Path], output: str | None, fmt: str) -> list[Job]:
     return [Job(f, out / default_output_name(f, fmt)) for f in files]
 
 
+def _render(document: Document, fmt: str, layout: TextLayout, title: str) -> str:
+    if fmt == "md":
+        return to_markdown(document)
+    if fmt == "html":
+        return to_html(document, title=title)
+    return to_txt(document, layout)
+
+
+def _export(
+    document: Document, target: Path, fmt: str, layout: TextLayout, overwrite: bool, title: str
+) -> None:
+    if fmt == "docx":
+        export_docx(document, target, overwrite=overwrite)
+    elif fmt == "md":
+        export_markdown(document, target, overwrite=overwrite)
+    elif fmt == "html":
+        export_html(document, target, title=title, overwrite=overwrite)
+    else:
+        export_txt(document, target, layout=layout, overwrite=overwrite)
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="lokalocr",
@@ -113,7 +140,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--lang", choices=LANGUAGES, default="pol+eng", help="język OCR (domyślnie pol+eng)"
     )
     parser.add_argument(
-        "--format", choices=FORMATS, default="txt", dest="fmt", help="format wyniku (domyślnie txt)"
+        "--format",
+        choices=FORMATS,
+        default="txt",
+        dest="fmt",
+        help="format wyniku: txt, docx, pdf (z warstwą tekstową), md, html (domyślnie txt)",
     )
     parser.add_argument(
         "--layout",
@@ -161,6 +192,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return ExitCode.USAGE
     if args.output == "-" and len(files) > 1:
         parser.error("„-o -” działa tylko dla jednego pliku")
+    if args.output == "-" and args.fmt not in ("txt", "md", "html"):
+        parser.error("„-o -” działa tylko dla formatów txt, md i html")
     jobs = _plan(files, args.output, args.fmt)
 
     try:
@@ -189,8 +222,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             continue
 
         def progress(event: ProgressEvent, prefix: str = prefix) -> None:
-            # One line per page, when its OCR starts.
-            if event.stage == "ocr" and event.page and event.percent < 100:
+            # One line per page, when its OCR (or PDF export) starts.
+            if event.stage in ("ocr", "export") and event.page and event.percent < 100:
                 _say(
                     f"{prefix}: strona {event.page}/{event.page_count} — "
                     f"{STAGE_LABELS[event.stage]}",
@@ -198,12 +231,28 @@ def main(argv: Sequence[str] | None = None) -> int:
                 )
 
         try:
+            if args.fmt == "pdf":
+                # The PDF renderer runs OCR itself while building the text layer.
+                assert job.target is not None
+                export_searchable_pdf(
+                    job.source,
+                    job.target,
+                    engine,
+                    options,
+                    overwrite=args.overwrite,
+                    on_progress=progress,
+                    cancel=cancel,
+                )
+                _say(f"{prefix}: zapisano {job.target}", quiet=args.quiet)
+                continue
             document = pipeline.process(job.source, options, on_progress=progress, cancel=cancel)
             if job.target is None:
-                sys.stdout.write(to_txt(document, args.layout))
+                sys.stdout.write(_render(document, args.fmt, args.layout, job.source.stem))
                 sys.stdout.flush()
             else:
-                export_txt(document, job.target, layout=args.layout, overwrite=args.overwrite)
+                _export(
+                    document, job.target, args.fmt, args.layout, args.overwrite, job.source.stem
+                )
                 _say(f"{prefix}: zapisano {job.target}", quiet=args.quiet)
         except KeyboardInterrupt:
             cancel.set()

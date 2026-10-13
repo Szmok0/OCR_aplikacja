@@ -204,3 +204,76 @@ def rejected_files(n: int) -> str:
 
 def saved_as(name: str) -> str:
     return f"Zapisano: {name}"
+
+
+# --- preview, tabs, export (stage 4) -------------------------------------------------
+
+PREV_PAGE = "Poprzednia strona (PgUp)"
+NEXT_PAGE = "Następna strona (PgDn)"
+PAGE_NUMBER = "Numer strony"
+ZOOM_OUT = "Pomniejsz (Ctrl+-)"
+ZOOM_IN = "Powiększ (Ctrl++)"
+FIT = "Dopasuj do okna"
+HAND_TOOL = "Rączka — przesuwanie strony"
+MAGNIFIER_TOOL = "Lupa — kliknij, aby powiększyć; prawy przycisk pomniejsza"
+ROTATE_LEFT = "Obróć w lewo"
+ROTATE_RIGHT = "Obróć w prawo"
+DESKEW = "Prostuj stronę w podglądzie"
+PREVIEW_FAILED = "Nie udało się wyświetlić podglądu tej strony."
+
+TAB_TEXT = "Tekst"
+TAB_PREVIEW = "Podgląd"
+TAB_TEXT_TIP = "Podgląd oryginału obok rozpoznanego tekstu"
+TAB_PREVIEW_TIP = "Podgląd strony na całą szerokość z ramkami rozpoznanych bloków"
+TAB_IMAGES_TIP = "Obrazy wyciągnięte z dokumentu (tryb pełny)"
+STRUCTURE = "Struktura"
+STRUCTURE_TIP = "Struktura dokumentu: nagłówki, akapity, listy, tabele i obrazy"
+STRUCTURE_UNAVAILABLE = "Struktura dokumentu jest dostępna w trybie pełnym."
+IMAGES_UNAVAILABLE = "Obrazy są wyciągane w trybie pełnym."
+
+FORMAT_LABELS: dict[str, str] = {
+    "docx": "DOCX",
+    "txt": "TXT",
+    "pdf": "PDF (z tekstem)",
+    "md": "Markdown",
+    "html": "HTML",
+}
+FORMAT_FILTERS: dict[str, str] = {
+    "docx": "Dokument Word (*.docx)",
+    "txt": "Plik tekstowy (*.txt)",
+    "pdf": "PDF z warstwą tekstową (*.pdf)",
+    "md": "Markdown (*.md)",
+    "html": "Strona HTML (*.html)",
+}
+FORMAT_TIPS: dict[str, str] = {
+    "docx": "Edytowalny dokument Word — czysty dokument, nie kopia wyglądu strony",
+    "txt": "Czysty tekst w kodowaniu UTF-8",
+    "pdf": "Oryginalne strony z ukrytą warstwą tekstu — tekst można zaznaczać i wyszukiwać",
+    "md": "Markdown — tekst z prostym formatowaniem",
+    "html": "Strona HTML do otwarcia w przeglądarce (bez zasobów z internetu)",
+}
+SAVE_AS_MENU = "Zapisz jako"
+OPEN_IMAGES_TIP = "Otwórz folder z obrazami wyciągniętymi z dokumentu"
+OUTPUT_OPTIONS = "Opcje wyniku (dla tego dokumentu)"
+CLEAN_TEXT_ALWAYS = "Czysty tekst (zawsze)"
+CLEAN_TEXT_TIP = "Rozpoznany tekst jest zawsze częścią wyniku."
+KEEP_STRUCTURE = "Zachowaj strukturę (tryb pełny)"
+KEEP_STRUCTURE_TIP = (
+    "W trybie pełnym DOCX, Markdown i HTML zawierają nagłówki, listy, tabele i obrazy. "
+    "Po wyłączeniu zapisywany jest czysty tekst w akapitach."
+)
+EXPORTING_TITLE = "Trwa zapisywanie…"
+EXPORT_CANCELLED = "Zapis przerwany."
+EXPORT_BUSY = "Trwa zapisywanie innego pliku. Poczekaj na jego zakończenie."
+
+
+def save_as(fmt: str) -> str:
+    return f"Zapisz jako {FORMAT_LABELS[fmt].split(' ')[0]}"
+
+
+def tab_images(n: int) -> str:
+    return f"Obrazy ({n})"
+
+
+def open_images(n: int) -> str:
+    return f"Otwórz folder z obrazami ({n})"

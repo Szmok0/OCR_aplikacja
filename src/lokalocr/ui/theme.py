@@ -163,6 +163,12 @@ QPushButton[link="true"]:hover {{ text-decoration: underline; }}
 QPushButton[segment="true"] {{ border-radius: 6px; padding: 5px 10px; }}
 QPushButton[segment="true"]:checked {{ background: {t.accent}; color: {t.on_accent}; border-color: {t.accent}; }}
 
+QToolButton[primary="true"] {{ background: {t.accent}; color: {t.on_accent}; border: 1px solid {t.accent};
+                               border-radius: 8px; padding: 6px 12px; font-weight: 600; }}
+QToolButton[primary="true"]:hover {{ background: {t.accent_hover}; }}
+QToolButton[primary="true"]:disabled {{ background: {t.border}; color: {t.text_muted}; border-color: {t.border}; }}
+QToolButton[primary="true"]::menu-button {{ border-left: 1px solid {t.on_accent}; width: 22px;
+                                           border-top-right-radius: 8px; border-bottom-right-radius: 8px; }}
 QToolButton {{ border: 1px solid transparent; border-radius: 6px; padding: 4px; background: transparent; }}
 QToolButton:hover {{ background: {t.surface}; border-color: {t.border}; }}
 QToolButton:checked {{ background: {t.accent_soft}; border-color: {t.accent}; }}
@@ -179,6 +185,8 @@ QComboBox QAbstractItemView {{ background: {t.surface_alt}; border: 1px solid {t
                               selection-background-color: {t.accent_soft}; selection-color: {t.text}; }}
 
 QRadioButton::indicator, QCheckBox::indicator {{ width: 16px; height: 16px; }}
+QRadioButton:disabled, QCheckBox:disabled {{ color: {t.text_muted}; }}
+QLineEdit#PageSpin {{ padding: 2px 4px; }}
 
 QProgressBar {{ background: {t.border}; border: none; border-radius: 3px; max-height: 6px;
                text-align: center; color: transparent; }}

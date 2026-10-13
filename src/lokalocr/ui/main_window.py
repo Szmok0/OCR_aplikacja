@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 from collections.abc import Callable
 from pathlib import Path
 
@@ -20,6 +21,7 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QButtonGroup,
+    QCheckBox,
     QComboBox,
     QFileDialog,
     QFrame,
@@ -32,6 +34,9 @@ from PySide6.QtWidgets import (
     QPushButton,
     QRadioButton,
     QSplitter,
+    QStackedWidget,
+    QTabBar,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -40,6 +45,10 @@ from lokalocr import tempdir
 from lokalocr.engines.base import OcrEngine
 from lokalocr.errors import ErrorCode, LokalOcrError
 from lokalocr.exporters.common import OutputExistsError, default_output_name
+from lokalocr.exporters.docx import export_docx
+from lokalocr.exporters.html import export_html
+from lokalocr.exporters.markdown import export_markdown
+from lokalocr.exporters.pdf_text import PdfRenderer, export_searchable_pdf
 from lokalocr.exporters.txt import export_txt
 from lokalocr.loader import SUPPORTED_EXTENSIONS, detect_format
 from lokalocr.model import Document
@@ -56,13 +65,18 @@ from lokalocr.ui.widgets.basic import (
     accepts,
     dropped_paths,
     muted_label,
-    primary_button,
 )
+from lokalocr.ui.widgets.preview import PagePreview
 from lokalocr.ui.widgets.queue_delegate import QueueDelegate, more_button_rect
 from lokalocr.ui.widgets.result_panel import ResultPanel
-from lokalocr.ui.worker import ProcessingController
+from lokalocr.ui.worker import WRITE_FAILED, ExportController, ProcessingController
 
 _log = logging.getLogger(__name__)
+
+TAB_TEXT, TAB_PREVIEW, TAB_IMAGES = range(3)
+FORMATS = ("docx", "txt", "pdf", "md", "html")
+DEFAULT_FORMAT = "docx"
+FORMAT_ICONS = {"txt": "file_txt", "pdf": "file_pdf", "md": "file_markdown", "html": "file_html"}
 
 
 class QueueList(QListView):
@@ -119,6 +133,10 @@ class MainWindow(QMainWindow):
         self.controller.failed.connect(self._on_failed)
         self.controller.probed.connect(self._on_probed)
         self.controller.probe_failed.connect(self._on_probe_failed)
+        self.exporter = ExportController()
+        self.exporter.progress.connect(self._on_export_progress)
+        self.exporter.finished.connect(self._on_export_finished)
+        self.exporter.failed.connect(self._on_export_failed)
         self._last_dir = Path.home()
         self._closing = False
         self._remove_after_cancel = False
@@ -141,6 +159,7 @@ class MainWindow(QMainWindow):
         self.splitter.addWidget(self.workspace)
         self.result = ResultPanel()
         self.result.cancel_requested.connect(self.cancel_current)
+        self.result.setMinimumWidth(320)
         self.result.copied.connect(self._on_copied)
         self.splitter.addWidget(self.result)
         self.splitter.setStretchFactor(0, 0)
@@ -289,37 +308,110 @@ class MainWindow(QMainWindow):
         return panel
 
     def _build_workspace(self) -> QWidget:
-        """Zone 3/4 placeholder until the page preview arrives in stage 4."""
+        """Zones 3 and 4: view tabs, structure button, page preview / image gallery."""
         panel = QFrame()
         panel.setObjectName("Panel")
         layout = QVBoxLayout(panel)
-        layout.addStretch()
-        self.workspace_icon = QLabel()
-        self.workspace_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.workspace_icon.setPixmap(icons.pixmap("icon_tab_preview", 44, "text_muted"))
-        self.workspace_title = QLabel(S.WORKSPACE_EMPTY_TITLE)
-        self.workspace_title.setProperty("heading", True)
-        self.workspace_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.workspace_hint = muted_label(S.WORKSPACE_EMPTY_HINT)
-        self.workspace_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.workspace_hint.setWordWrap(True)
-        layout.addWidget(self.workspace_icon)
-        layout.addWidget(self.workspace_title)
-        layout.addWidget(self.workspace_hint)
-        layout.addStretch()
+        layout.setContentsMargins(8, 6, 8, 8)
+        layout.setSpacing(4)
+        head = QHBoxLayout()
+        self.tabs = QTabBar()
+        self.tabs.setExpanding(False)
+        self.tabs.setDrawBase(False)
+        self.tabs.addTab(S.TAB_TEXT)
+        self.tabs.addTab(S.TAB_PREVIEW)
+        self.tabs.addTab(S.tab_images(0))
+        self.tabs.setTabToolTip(TAB_TEXT, S.TAB_TEXT_TIP)
+        self.tabs.setTabToolTip(TAB_PREVIEW, S.TAB_PREVIEW_TIP)
+        self.tabs.setTabToolTip(TAB_IMAGES, S.IMAGES_UNAVAILABLE)
+        self.tabs.setTabEnabled(TAB_IMAGES, False)
+        self.tabs.currentChanged.connect(self._on_tab_changed)
+        head.addWidget(self.tabs)
+        head.addStretch()
+        self.structure_btn = QPushButton(S.STRUCTURE)
+        self.structure_btn.setToolTip(S.STRUCTURE_UNAVAILABLE)
+        self.structure_btn.setEnabled(False)
+        self.structure_btn.clicked.connect(self.open_structure)
+        head.addWidget(self.structure_btn)
+        layout.addLayout(head)
+
+        self.workspace_stack = QStackedWidget()
+        self.preview = PagePreview()
+        self.workspace_stack.addWidget(self.preview)
+        self.images_placeholder = muted_label(S.IMAGES_UNAVAILABLE)
+        self.images_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.workspace_stack.addWidget(self.images_placeholder)
+        layout.addWidget(self.workspace_stack, 1)
         return panel
 
     def _build_action_bar(self) -> QWidget:
+        """Zone 6: save buttons and output options."""
         bar = QFrame()
         bar.setObjectName("Panel")
         layout = QHBoxLayout(bar)
         layout.setContentsMargins(12, 8, 12, 8)
-        self.save_txt_btn = primary_button(S.SAVE_TXT, "icon_save")
-        self.save_txt_btn.setToolTip(S.SAVE_TXT_TIP)
-        self.save_txt_btn.clicked.connect(self.save_txt)
-        layout.addWidget(self.save_txt_btn)
+        layout.setSpacing(8)
+
+        self.save_main_btn = QToolButton()
+        self.save_main_btn.setText(S.save_as(DEFAULT_FORMAT))
+        self.save_main_btn.setProperty("primary", True)
+        self.save_main_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.save_main_btn.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
+        self.save_main_btn.setToolTip(f"{S.FORMAT_TIPS[DEFAULT_FORMAT]} (Ctrl+S)")
+        self.save_main_btn.clicked.connect(lambda: self.save(DEFAULT_FORMAT))
+        menu = QMenu(self.save_main_btn)
+        for fmt in FORMATS:
+            action = menu.addAction(S.FORMAT_LABELS[fmt])
+            action.setToolTip(S.FORMAT_TIPS[fmt])
+            action.triggered.connect(lambda _=False, f=fmt: self.save(f))
+        self.save_main_btn.setMenu(menu)
+        layout.addWidget(self.save_main_btn)
+
+        self.format_buttons: dict[str, QPushButton] = {}
+        for fmt in ("txt", "pdf", "md", "html"):
+            button = QPushButton(S.FORMAT_LABELS[fmt])
+            button.setToolTip(S.FORMAT_TIPS[fmt])
+            button.setProperty("iconName", FORMAT_ICONS[fmt])
+            button.clicked.connect(lambda _=False, f=fmt: self.save(f))
+            self.format_buttons[fmt] = button
+            layout.addWidget(button)
+        self.open_images_btn = QPushButton(S.open_images(0))
+        self.open_images_btn.setProperty("iconName", "icon_folder_open")
+        self.open_images_btn.setToolTip(S.IMAGES_UNAVAILABLE)
+        self.open_images_btn.setEnabled(False)
+        layout.addWidget(self.open_images_btn)
         layout.addStretch()
+
+        options = QVBoxLayout()
+        options.setSpacing(2)
+        options.addWidget(muted_label(S.OUTPUT_OPTIONS, small=True))
+        row = QHBoxLayout()
+        self.clean_text_cb = QCheckBox(S.CLEAN_TEXT_ALWAYS)
+        self.clean_text_cb.setChecked(True)
+        self.clean_text_cb.setEnabled(False)
+        self.clean_text_cb.setToolTip(S.CLEAN_TEXT_TIP)
+        self.keep_structure_cb = QCheckBox(S.KEEP_STRUCTURE)
+        self.keep_structure_cb.setChecked(True)
+        self.keep_structure_cb.setToolTip(S.KEEP_STRUCTURE_TIP)
+        self.structure_info = QLabel()
+        self.structure_info.setToolTip(S.KEEP_STRUCTURE_TIP)
+        row.addWidget(self.clean_text_cb)
+        row.addSpacing(8)
+        row.addWidget(self.keep_structure_cb)
+        row.addWidget(self.structure_info)
+        options.addLayout(row)
+        layout.addLayout(options)
+        self._refresh_action_icons()
         return bar
+
+    def _refresh_action_icons(self) -> None:
+        self.save_main_btn.setIcon(icons.icon("icon_save", "on_accent"))
+        self.save_main_btn.setIconSize(QSize(16, 16))
+        for button in (*self.format_buttons.values(), self.open_images_btn):
+            name = button.property("iconName")
+            if name:
+                button.setIcon(icons.icon(str(name)))
+        self.structure_info.setPixmap(icons.pixmap("icon_info", 16, "text_muted"))
 
     def _install_shortcuts(self) -> None:
         def bind(
@@ -329,7 +421,11 @@ class MainWindow(QMainWindow):
             shortcut.activated.connect(slot)
 
         bind(QKeySequence.StandardKey.Open, self.browse_files)
-        bind(QKeySequence.StandardKey.Save, self.save_txt)
+        bind(QKeySequence.StandardKey.Save, lambda: self.save(DEFAULT_FORMAT))
+        bind(QKeySequence.StandardKey.MoveToPreviousPage, self.preview.prev_page)
+        bind(QKeySequence.StandardKey.MoveToNextPage, self.preview.next_page)
+        bind(QKeySequence.StandardKey.ZoomIn, self.preview.view.zoom_in)
+        bind(QKeySequence.StandardKey.ZoomOut, self.preview.view.zoom_out)
         bind(QKeySequence.StandardKey.Find, self.result.focus_search)
         bind("Esc", self.cancel_current)
         bind("F1", self.open_help)
@@ -479,6 +575,9 @@ class MainWindow(QMainWindow):
 
     def cancel_current(self) -> None:
         """Ask how to cancel (§7.6): keep the file waiting or remove it."""
+        if self.exporter.busy:
+            self.exporter.cancel()
+            return
         item_id = self.controller.current_item
         if item_id is None:
             return
@@ -580,48 +679,142 @@ class MainWindow(QMainWindow):
         item = self.current_item()
         if item is None:
             self.result.show_empty()
-        elif item.status is Status.DONE and item.document is not None:
-            self.result.show_document(item.document)
-        elif item.status is Status.PROCESSING:
-            self.result.show_progress(None)
-        elif item.status is Status.ERROR and item.error_code is not None:
-            self.result.show_error(item.error_code)
+            self.preview.clear()
         else:
-            self.result.show_waiting(item.name)
+            pages = item.document.pages if item.document is not None else None
+            self.preview.show_document(item.path, item.page_count, pages)
+            if self.exporter.current_item == item.id:
+                self.result.show_progress(None, title=S.EXPORTING_TITLE)
+            elif item.status is Status.DONE and item.document is not None:
+                self.result.show_document(item.document)
+            elif item.status is Status.PROCESSING:
+                self.result.show_progress(None)
+            elif item.status is Status.ERROR and item.error_code is not None:
+                self.result.show_error(item.error_code)
+            else:
+                self.result.show_waiting(item.name)
         self._update_actions()
 
     def _update_actions(self) -> None:
         item = self.current_item()
         has_result = item is not None and item.document is not None
-        self.save_txt_btn.setEnabled(has_result)
+        full = (
+            has_result
+            and item is not None
+            and item.document is not None
+            and (item.document.mode == "full")
+        )
+        self.save_main_btn.setEnabled(has_result)
+        for button in self.format_buttons.values():
+            button.setEnabled(has_result)
+        self.keep_structure_cb.setEnabled(full)
+        self.structure_btn.setEnabled(full)
+        self.structure_btn.setToolTip(S.STRUCTURE_TIP if full else S.STRUCTURE_UNAVAILABLE)
+        image_count = len(item.document.images) if item is not None and item.document else 0
+        self.tabs.setTabText(TAB_IMAGES, S.tab_images(image_count))
+        self.tabs.setTabEnabled(TAB_IMAGES, full)
+        self.tabs.setTabToolTip(TAB_IMAGES, S.TAB_IMAGES_TIP if full else S.IMAGES_UNAVAILABLE)
+        self.open_images_btn.setText(S.open_images(image_count))
+        self.open_images_btn.setEnabled(False)  # images folder arrives with full mode
+
+    # --- view tabs ----------------------------------------------------------------------
+
+    def _on_tab_changed(self, index: int) -> None:
+        self.workspace_stack.setCurrentIndex(1 if index == TAB_IMAGES else 0)
+        self.result.setVisible(index == TAB_TEXT)
+        self.preview.set_overlay_visible(index == TAB_PREVIEW)
+
+    def open_structure(self) -> None:
+        QMessageBox.information(self, S.STRUCTURE, S.STRUCTURE_UNAVAILABLE)
 
     # --- saving ------------------------------------------------------------------------
 
-    def save_txt(self) -> None:
+    def save(self, fmt: str) -> None:
+        """Save the selected result as ``fmt`` (docx, txt, pdf, md, html)."""
         item = self.current_item()
         if item is None or item.document is None:
             return
-        suggested = self._last_dir / default_output_name(item.path, "txt")
+        if self.exporter.busy:
+            self.toast.show_message(S.EXPORT_BUSY)
+            return
+        suggested = self._last_dir / default_output_name(item.path, fmt)
         path_str, _ = QFileDialog.getSaveFileName(
-            self, S.SAVE_DIALOG_TITLE, str(suggested), f"{S.FILTER_TXT} (*.txt)"
+            self, S.SAVE_DIALOG_TITLE, str(suggested), S.FORMAT_FILTERS[fmt]
         )
         if not path_str:
             return
         path = Path(path_str)
-        if path.suffix.lower() != ".txt":
-            path = path.with_suffix(".txt")
-        # The native dialog already asked about overwriting an existing file.
+        if path.suffix.lower() != f".{fmt}":
+            path = path.with_name(path.name + f".{fmt}")
+        # The native dialog has already asked before overwriting.
+        overwrite = path.exists()
+        document = item.document
+        structure = self.keep_structure_cb.isChecked()
+        self._last_dir = path.parent
+        if fmt == "pdf":
+            options = item.options or self.options()
+            source = item.path
+            factory = self.controller.engine_factory
+
+            def job(progress: Callable[[ProgressEvent], None], cancel: threading.Event) -> Path:
+                engine = factory()
+                assert isinstance(engine, PdfRenderer)
+                return export_searchable_pdf(
+                    source,
+                    path,
+                    engine,
+                    options,
+                    overwrite=overwrite,
+                    on_progress=progress,
+                    cancel=cancel,
+                )
+
+            self.exporter.start(item.id, job)
+            if self._is_selected(item.id):
+                self.result.show_progress(None, title=S.EXPORTING_TITLE)
+            return
         try:
-            export_txt(item.document, path, layout=self.result.layout_mode, overwrite=path.exists())
+            if fmt == "txt":
+                export_txt(document, path, layout=self.result.layout_mode, overwrite=overwrite)
+            elif fmt == "docx":
+                export_docx(document, path, structure=structure, overwrite=overwrite)
+            elif fmt == "md":
+                export_markdown(document, path, structure=structure, overwrite=overwrite)
+            elif fmt == "html":
+                export_html(
+                    document, path, structure=structure, title=item.path.stem, overwrite=overwrite
+                )
         except OutputExistsError:
             return
         except OSError:
-            _log.error("Saving TXT failed (OSError)")
+            _log.error("Saving %s failed (OSError)", fmt)
             QMessageBox.warning(self, S.APP_NAME, S.SAVE_FAILED)
             return
-        self._last_dir = path.parent
+        self._saved(path)
+
+    def save_txt(self) -> None:
+        self.save("txt")
+
+    def _saved(self, path: Path) -> None:
         self._last_saved = path
         self.toast.show_message(S.saved_as(path.name), S.SHOW_IN_FOLDER)
+
+    def _on_export_progress(self, item_id: int, event: ProgressEvent) -> None:
+        if self._is_selected(item_id):
+            self.result.show_progress(event, title=S.EXPORTING_TITLE)
+
+    def _on_export_finished(self, item_id: int, path: Path) -> None:
+        self._refresh_selected()
+        self._saved(path)
+
+    def _on_export_failed(self, item_id: int, code: str) -> None:
+        self._refresh_selected()
+        if code == ErrorCode.CANCELLED.value:
+            self.toast.show_message(S.EXPORT_CANCELLED)
+        elif code == WRITE_FAILED:
+            QMessageBox.warning(self, S.APP_NAME, S.SAVE_FAILED)
+        else:
+            QMessageBox.warning(self, S.APP_NAME, S.error_message(ErrorCode(code)))
 
     def _on_copied(self) -> None:
         self.toast.show_message(S.COPIED)
@@ -663,6 +856,8 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event: QCloseEvent) -> None:
         self._closing = True
         self.controller.shutdown()
+        self.exporter.shutdown()
+        self.preview.shutdown()
         self.queue.clear()
         tempdir.cleanup()
         super().closeEvent(event)

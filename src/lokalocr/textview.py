@@ -14,7 +14,7 @@ from typing import Literal
 
 from lokalocr.model import Block, BlockType, Document, Line, Page, block_text
 
-__all__ = ["TextLayout", "original_layout", "render", "simplified"]
+__all__ = ["TextLayout", "original_layout", "paragraphs", "render", "simplified"]
 
 TextLayout = Literal["original", "simplified"]
 
@@ -139,22 +139,26 @@ def _continues(prev: Block, block: Block) -> bool:
     return block.lines[0].text[:1].islower() and _is_wrapped(prev.lines[-1], block.lines[0], prev)
 
 
-def simplified(document: Document) -> str:
-    out = ""
+def paragraphs(document: Document) -> list[str]:
+    """Simplified paragraphs in reading order, re-joining paragraphs split across blocks."""
+    out: list[str] = []
     for page in document.pages:
         prev: Block | None = None
         for block in page.blocks:
             text = simplified_block(block)
             if not text:
                 continue
-            if not out:
-                out = text
-            elif prev is not None and _continues(prev, block):
-                out = merge_lines([out, text]) if out.endswith("-") else f"{out} {text}"
+            if out and prev is not None and _continues(prev, block):
+                last = out[-1]
+                out[-1] = merge_lines([last, text]) if last.endswith("-") else f"{last} {text}"
             else:
-                out = f"{out}\n\n{text}"
+                out.append(text)
             prev = block
     return out
+
+
+def simplified(document: Document) -> str:
+    return "\n\n".join(paragraphs(document))
 
 
 def render(document: Document, layout: TextLayout) -> str:
