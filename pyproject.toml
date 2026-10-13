@@ -1,0 +1,75 @@
+[build-system]
+requires = ["hatchling==1.32.4"]
+build-backend = "hatchling.build"
+
+[project]
+name = "lokalocr"
+version = "0.1.0"
+description = "Offline OCR and document conversion desktop application"
+readme = "README.md"
+requires-python = ">=3.11"
+# Runtime dependencies are added per stage (§10). Every new entry needs its
+# license noted in the PR and must pass scripts/check_licenses.py.
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "mypy==2.4.0",
+    "pre-commit==4.7.0",
+    "pytest==9.1.1",
+    "ruff==0.17.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/lokalocr"]
+
+# --- ruff -------------------------------------------------------------------
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests", "scripts"]
+extend-exclude = ["*.md"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W", "F", "I", "B", "UP", "SIM", "RUF", "N",
+    "TID",  # flake8-tidy-imports: banned network APIs (§6.3)
+]
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+# Application code must never talk to the network (§0.1, §6.3).
+# Mirrored by tests/test_banned_imports.py, which also fails on `import x`
+# forms that ruff may not flag.
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"requests".msg = "Network libraries are banned in LokalOCR (offline-only, see CLAUDE.md §6)."
+"httpx".msg = "Network libraries are banned in LokalOCR (offline-only, see CLAUDE.md §6)."
+"urllib3".msg = "Network libraries are banned in LokalOCR (offline-only, see CLAUDE.md §6)."
+"aiohttp".msg = "Network libraries are banned in LokalOCR (offline-only, see CLAUDE.md §6)."
+"urllib.request".msg = "Network access is banned in LokalOCR (offline-only, see CLAUDE.md §6)."
+"http.client".msg = "Network access is banned in LokalOCR (offline-only, see CLAUDE.md §6)."
+
+[tool.ruff.lint.per-file-ignores]
+# Developer scripts run outside the app; fetch_models.py is the one place
+# allowed to download (§6.4).
+"scripts/fetch_models.py" = ["TID251"]
+
+# --- mypy -------------------------------------------------------------------
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["src", "tests", "scripts"]
+mypy_path = "src"
+
+# --- pytest -----------------------------------------------------------------
+
+[tool.pytest.ini_options]
+minversion = "9.0"
+testpaths = ["tests"]
+addopts = ["-ra", "--strict-markers"]
+markers = [
+    "models: needs the full-mode models in models/ (optional, run locally)",
+]
