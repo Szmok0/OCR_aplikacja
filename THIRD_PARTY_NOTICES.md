@@ -40,7 +40,12 @@ Licencje modeli odczytuje `python scripts/model_licenses.py` (z kart modeli; tyl
 
 | Program | Licencja | Uwagi |
 |---|---|---|
-| Tesseract OCR 5 | Apache-2.0 | uruchamiany jako osobny proces; dane językowe `pol`, `eng` — Apache-2.0 |
+| Tesseract OCR 5 | Apache-2.0 | uruchamiany jako osobny proces; dane językowe `pol`, `eng`, `osd` (tessdata_fast) — Apache-2.0 |
+
+### Pakiet dla Windows
+
+- **Tesseract** w folderze `_internal\tesseract` pochodzi z instalatora UB Mannheim (repozytorium Chocolatey `tesseract`). Razem z nim dołączone są jego biblioteki DLL (m.in. Leptonica — BSD-2-Clause, libpng, libjpeg-turbo, libtiff, libwebp, OpenJPEG, zlib, giflib, libarchive, ICU, HarfBuzz, FreeType, fontconfig, cairo/pango/GLib — LGPL-2.1 jako biblioteki dynamiczne, libcurl — licencja curl). Teksty licencji, które dostarcza instalator, znajdują się w `_internal\tesseract\doc`. Aplikacja przekazuje Tesseractowi obraz przez standardowe wejście, nigdy adres URL.
+- **PyInstaller** (narzędzie do budowania, GPL-2.0 z wyjątkiem dla bootloadera) — wyjątek pozwala rozpowszechniać zbudowany program na dowolnej licencji; PyInstaller nie jest częścią aplikacji.
 
 ## Tylko do testów (nie trafiają do aplikacji)
 
