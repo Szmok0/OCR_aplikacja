@@ -108,3 +108,17 @@ def test_cancel_kills_process(engine: tess.TesseractEngine) -> None:
 def test_searchable_pdf(engine: tess.TesseractEngine) -> None:
     data = engine.searchable_pdf(Image.new("L", (300, 300), 255), "pol", dpi=300)
     assert data.startswith(b"%PDF-")
+
+
+@pytestmark_real
+def test_cancel_during_recognition(engine: tess.TesseractEngine) -> None:
+    import time
+
+    cancel = threading.Event()
+    timer = threading.Timer(0.3, cancel.set)
+    image = fx.make_contract(300, pages=1).pages[0].image
+    started = time.monotonic()
+    timer.start()
+    with pytest.raises(CancelledError):
+        engine.recognize(image, "pol+eng", dpi=300, cancel=cancel)
+    assert time.monotonic() - started < 1.5

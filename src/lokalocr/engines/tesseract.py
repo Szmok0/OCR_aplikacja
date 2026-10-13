@@ -160,21 +160,32 @@ class TesseractEngine:
         except OSError as exc:
             raise EngineMissingError("tesseract could not be started") from exc
 
-        elapsed = 0.0
-        data_in = stdin
-        while True:
-            try:
-                out, err = proc.communicate(input=data_in, timeout=_POLL_SECONDS)
-                break
-            except subprocess.TimeoutExpired:
-                data_in = None  # input is only sent on the first call
-                elapsed += _POLL_SECONDS
-                if (cancel is not None and cancel.is_set()) or elapsed > timeout:
+        # One communicate() call does all the I/O. Retrying communicate() after
+        # a timeout is not portable (on Python 3.12 the retry stops feeding
+        # stdin and Tesseract waits forever), so cancellation is handled by a
+        # watcher thread that kills the process instead.
+        done = threading.Event()
+
+        def watch_cancel() -> None:
+            while not done.is_set():
+                if cancel is not None and cancel.wait(_POLL_SECONDS):
                     proc.kill()
-                    proc.communicate()
-                    if cancel is not None and cancel.is_set():
-                        raise CancelledError("OCR cancelled") from None
-                    raise LokalOcrError("tesseract timed out") from None
+                    return
+                if cancel is None:
+                    return
+
+        watcher = threading.Thread(target=watch_cancel, name="tesseract-cancel", daemon=True)
+        watcher.start()
+        try:
+            out, err = proc.communicate(input=stdin, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.communicate()
+            raise LokalOcrError("tesseract timed out") from None
+        finally:
+            done.set()
+        if cancel is not None and cancel.is_set():
+            raise CancelledError("OCR cancelled")
         if proc.returncode != 0:
             message = err.decode("utf-8", "replace")
             if "Failed loading language" in message or "Error opening data file" in message:
