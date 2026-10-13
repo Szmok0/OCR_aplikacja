@@ -12,7 +12,7 @@ Desktopowa aplikacja do OCR i konwersji dokumentów (PDF, PNG, JPG, TIFF → tek
 lokalocr-gui                              # okno aplikacji
 ```
 
-Wymaga Tesseracta z danymi `pol` i `eng` (patrz [`docs/dev-setup.md`](docs/dev-setup.md)). Pakiet dla Windows z dołączonym Tesseractem powstanie w etapie 7.
+Wymaga Tesseracta z danymi `pol` i `eng` (patrz [`docs/dev-setup.md`](docs/dev-setup.md)). Pakiet dla Windows (z dołączonym Tesseractem) buduje workflow `build-windows.yml`; instalacja: [`docs/install-windows.md`](docs/install-windows.md), kontrola offline: [`docs/offline-checklist.md`](docs/offline-checklist.md).
 
 ## Wiersz poleceń
 
@@ -26,6 +26,6 @@ lokalocr --help
 
 Kody wyjścia: `0` — wszystko przetworzone, `1` — część plików się nie udała, `2` — błędne wywołanie lub brak plików, `3` — brak Tesseracta albo danych językowych, `130` — przerwano (Ctrl+C).
 
-Status: etap 6 (tryb pełny: Docling, struktura dokumentu, obrazy).
+Status: etap 7 — prototyp (pakiet Windows, autotest `--selftest`).
 
 Licencje komponentów: [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).

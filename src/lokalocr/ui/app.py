@@ -52,6 +52,12 @@ def create_app(argv: Sequence[str] | None = None, settings: Settings | None = No
 def main(argv: Sequence[str] | None = None) -> int:
     # Full mode runs Docling in a spawned child process; needed for frozen builds.
     multiprocessing.freeze_support()
+    args = list(sys.argv[1:] if argv is None else argv)
+    if args[:1] == ["--selftest"]:
+        from lokalocr.selftest import run
+
+        create_app(["lokalocr", "-platform", "offscreen"])
+        return run(Path(args[1]) if len(args) > 1 else None)
     settings = config.load()
     logsetup.configure(settings.log_level)
     tempdir.set_root(Path(settings.temp_dir) if settings.temp_dir else None)
