@@ -7,16 +7,22 @@ name = "lokalocr"
 version = "0.1.0"
 description = "Offline OCR and document conversion desktop application"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 # Runtime dependencies are added per stage (§10). Every new entry needs its
 # license noted in the PR and must pass scripts/check_licenses.py.
-dependencies = []
+dependencies = [
+    "numpy==2.5.4",                      # BSD-3-Clause
+    "opencv-python-headless==5.0.0.93",  # Apache-2.0
+    "pillow==12.3.0",                    # MIT-CMU
+    "pypdfium2==5.14.0",                 # Apache-2.0 OR BSD-3-Clause (PDFium: BSD-3-Clause)
+]
 
 [project.optional-dependencies]
 dev = [
     "mypy==2.4.0",
     "pre-commit==4.7.0",
     "pytest==9.1.1",
+    "rapidfuzz==3.14.6",
     "ruff==0.17.0",
 ]
 
@@ -27,7 +33,7 @@ packages = ["src/lokalocr"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+target-version = "py312"
 src = ["src", "tests", "scripts"]
 extend-exclude = ["*.md"]
 
@@ -55,21 +61,30 @@ ban-relative-imports = "all"
 # Developer scripts run outside the app; fetch_models.py is the one place
 # allowed to download (§6.4).
 "scripts/fetch_models.py" = ["TID251"]
+# Synthetic document text reads better unwrapped.
+"scripts/make_fixtures.py" = ["E501"]
 
 # --- mypy -------------------------------------------------------------------
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 strict = true
 files = ["src", "tests", "scripts"]
-mypy_path = "src"
+mypy_path = ["src", "scripts"]
+
+[[tool.mypy.overrides]]
+module = ["pypdfium2", "pypdfium2.*"]
+ignore_missing_imports = true
 
 # --- pytest -----------------------------------------------------------------
 
 [tool.pytest.ini_options]
 minversion = "9.0"
 testpaths = ["tests"]
+pythonpath = ["scripts"]
 addopts = ["-ra", "--strict-markers"]
 markers = [
     "models: needs the full-mode models in models/ (optional, run locally)",
+    "tesseract: needs the tesseract binary with pol+eng data",
+    "slow: takes more than a few seconds",
 ]

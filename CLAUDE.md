@@ -89,7 +89,7 @@ Pipeline emituje zdarzenia: `etap` (`loading | preprocessing | ocr | layout | ex
 
 | Obszar | Wybór | Uzasadnienie / uwagi |
 |---|---|---|
-| Język | Python 3.11+ | szybki rozwój, dojrzały ekosystem OCR |
+| Język | Python 3.12+ | szybki rozwój, dojrzały ekosystem OCR (3.12, bo NumPy 2.5 nie wspiera już 3.11) |
 | UI | **PySide6 (Qt 6)** | natywny wygląd, w pełni offline, drag & drop; LGPL — linkuj dynamicznie |
 | OCR podstawowy | **Tesseract 5** (`pol`, `eng`) przez `pytesseract` lub `tesserocr` | Apache-2.0, CPU; binarka i dane językowe dołączane do instalatora; pewność na poziomie słów |
 | Struktura (tryb pełny) | **Docling** (IBM) | MIT; układ, tabele, obrazy; **sprawdź w bieżącej dokumentacji**: tryb offline (`artifacts_path`), wybór silnika OCR (Tesseract), natywny eksport |
@@ -397,6 +397,7 @@ Pracujemy w chmurowym środowisku Claude Code z podpiętym repozytorium właści
 - Commity w stylu Conventional Commits (`feat:`, `fix:`, `docs:`, `test:`, `chore:`).
 - Szablon PR: *co i dlaczego*, *jak przetestowano*, *nowe zależności i licencje*, *wpływ na prywatność/offline*, *zgodność z referencją UI*.
 - Agent tworzy PR i **nie scala go sam**. Scalanie po przeglądzie właściciela.
+  - **Wyjątek czasowy (decyzja właściciela z 13.10.2026):** do osiągnięcia stanu **prototypu** (aplikacja gotowa do oceny użyteczności przez właściciela) agent sam scala swoje PR-y po zielonym CI i samodzielnie przechodzi do kolejnych etapów. Po oddaniu prototypu wraca zasada przeglądu przez właściciela.
 - W razie niepewności co do architektury, licencji lub UI agent otwiera dyskusję/zgłoszenie zamiast zgadywać.
 
 ---

@@ -22,10 +22,11 @@ jobs:
         # Windows is the primary target (office laptops); Linux mirrors the
         # cloud dev environment.
         os: [windows-latest, ubuntu-latest]
-        python: ["3.11", "3.13"]
+        python: ["3.12", "3.13"]
     env:
       QT_QPA_PLATFORM: offscreen
       PYTHONUTF8: "1"
+      LOKALOCR_REQUIRE_TESSERACT: "1"
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -33,6 +34,24 @@ jobs:
           python-version: ${{ matrix.python }}
           cache: pip
           cache-dependency-path: pyproject.toml
+      - name: Install Tesseract (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q tesseract-ocr tesseract-ocr-pol tesseract-ocr-eng
+      - name: Install Tesseract (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install tesseract -y --no-progress
+          $tessdata = "C:\Program Files\Tesseract-OCR\tessdata"
+          foreach ($lang in @("pol", "eng")) {
+            $target = Join-Path $tessdata "$lang.traineddata"
+            if (-not (Test-Path $target)) {
+              Invoke-WebRequest -Uri "https://github.com/tesseract-ocr/tessdata_fast/raw/main/$lang.traineddata" -OutFile $target
+            }
+          }
+          & "C:\Program Files\Tesseract-OCR\tesseract.exe" --list-langs
       - name: Install
         run: python -m pip install -e ".[dev]"
       - name: Lint, types, tests, licenses

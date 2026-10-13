@@ -1,13 +1,13 @@
 # Środowisko deweloperskie
 
-Wymagany Python **3.11+**. Głównym systemem docelowym jest **Windows** (laptopy biurowe, CPU), testy działają też na Linuksie (środowisko chmurowe, CI).
+Wymagany Python **3.12+**. Głównym systemem docelowym jest **Windows** (laptopy biurowe, CPU), testy działają też na Linuksie (środowisko chmurowe, CI).
 
 ## Instalacja
 
 Windows (PowerShell):
 
 ```powershell
-py -3.11 -m venv .venv
+py -3.12 -m venv .venv
 .venv\Scripts\Activate.ps1
 python -m pip install -e ".[dev]"
 pre-commit install
@@ -39,7 +39,9 @@ Uruchamia kolejno: `ruff check`, `ruff format --check`, `mypy` (tryb strict), `p
 - Testy wymagające modeli trybu pełnego oznaczaj `@pytest.mark.models`.
 - Do repozytorium i sesji trafiają tylko dane syntetyczne (`scripts/make_fixtures.py`, etap 1).
 
-## Zależności systemowe (od etapu 1)
+## Tesseract (od etapu 1)
+
+Tryb podstawowy wymaga Tesseracta 5 z danymi `pol` i `eng`.
 
 Debian/Ubuntu:
 
@@ -47,4 +49,18 @@ Debian/Ubuntu:
 sudo apt-get install tesseract-ocr tesseract-ocr-pol tesseract-ocr-eng
 ```
 
-Windows: sposób dołączenia Tesseracta do instalatora ustalimy w etapie 7; na czas rozwoju wystarczy instalacja Tesseracta 5 z danymi `pol` i `eng` oraz wpis w `PATH`. Szczegóły dopiszemy w etapie 1.
+Windows: instalator UB Mannheim (np. `choco install tesseract`) do `C:\Program Files\Tesseract-OCR`; jeśli brakuje `pol.traineddata`, skopiuj go do podfolderu `tessdata`. Aplikacja znajduje Tesseracta w tej kolejności: zmienna `LOKALOCR_TESSERACT` (ścieżka do pliku), kopia dołączona do aplikacji (folder `tesseract/` obok programu), `PATH`, domyślny folder instalacji w Windows. Folder danych językowych można wskazać zmienną `LOKALOCR_TESSDATA`.
+
+Testy oznaczone `@pytest.mark.tesseract` są pomijane, jeśli Tesseracta nie ma. W CI ustawiamy `LOKALOCR_REQUIRE_TESSERACT=1`, żeby brak Tesseracta był błędem, a nie cichym pominięciem.
+
+Tesseract jest uruchamiany z `OMP_THREAD_LIMIT=1`: wątki OpenMP w Tesseract aktywnie czekają, przez co kilka równoległych procesów potrafi zwolnić się nawzajem o rzędy wielkości, a jeden wątek jest szybszy nawet na bezczynnej maszynie.
+
+## Dane testowe i jakość OCR
+
+```bash
+python scripts/make_fixtures.py               # zapisuje do tests/fixtures/generated/ (ignorowane przez git)
+python scripts/measure_cer.py                 # CER/WER na zestawie syntetycznym
+python scripts/measure_cer.py --compare       # porównanie wariantów obróbki obrazu
+```
+
+Wynik bazowy: [`docs/quality/cer-baseline.md`](quality/cer-baseline.md). Każda zmiana wpływająca na przetwarzanie powinna podać CER przed i po (§11).
