@@ -7,6 +7,7 @@ rendered lazily so a large PDF never sits in memory as a whole.
 from __future__ import annotations
 
 import logging
+import threading
 import warnings
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -34,6 +35,7 @@ __all__ = [
     "PageImage",
     "detect_format",
     "open_document",
+    "probe",
 ]
 
 _log = logging.getLogger(__name__)
@@ -48,6 +50,10 @@ _PLAUSIBLE_DPI = range(100, 1201)
 
 # Upper bound for a single rendered page (~ A3 at 600 dpi is 70 MP).
 MAX_PAGE_PIXELS = 120_000_000
+
+# PDFium is not thread-safe: every call into it goes through this lock, so the
+# UI can probe thumbnails while a document is being processed.
+_PDFIUM_LOCK = threading.RLock()
 
 _MAGIC: list[tuple[bytes, InputFormat]] = [
     (b"%PDF-", "pdf"),
@@ -119,7 +125,8 @@ class OpenedDocument:
         self._image: Image.Image | None = None
         if fmt == "pdf":
             self._pdf = _open_pdf(path)
-            self.page_count = len(self._pdf)
+            with _PDFIUM_LOCK:
+                self.page_count = len(self._pdf)
         else:
             self._image = _open_image(path)
             self.page_count = getattr(self._image, "n_frames", 1)
@@ -140,7 +147,8 @@ class OpenedDocument:
 
     def close(self) -> None:
         if self._pdf is not None:
-            self._pdf.close()
+            with _PDFIUM_LOCK:
+                self._pdf.close()
             self._pdf = None
         if self._image is not None:
             self._image.close()
@@ -151,7 +159,8 @@ class OpenedDocument:
         if not 0 <= index < self.page_count:
             raise IndexError(index)
         if self._pdf is not None:
-            return _render_pdf_page(self._pdf, index, dpi)
+            with _PDFIUM_LOCK:
+                return _render_pdf_page(self._pdf, index, dpi)
         assert self._image is not None
         return _render_image_frame(self._image, index)
 
@@ -164,9 +173,22 @@ def open_document(path: Path) -> OpenedDocument:
     return OpenedDocument(path, detect_format(path))
 
 
+THUMBNAIL_DPI = 24
+
+
+def probe(path: Path, max_px: int = 192) -> tuple[int, Image.Image]:
+    """Page count and a small first-page thumbnail (for the queue list)."""
+    with open_document(path) as doc:
+        page = doc.render(0, dpi=THUMBNAIL_DPI)
+        image = page.image
+        image.thumbnail((max_px, max_px))
+        return doc.page_count, image
+
+
 def _open_pdf(path: Path) -> pdfium.PdfDocument:
     try:
-        return pdfium.PdfDocument(path)
+        with _PDFIUM_LOCK:
+            return pdfium.PdfDocument(path)
     except pdfium.PdfiumError as exc:
         if exc.err_code in (pdfium_raw.FPDF_ERR_PASSWORD, pdfium_raw.FPDF_ERR_SECURITY):
             raise PasswordProtectedError("PDF is password protected") from exc

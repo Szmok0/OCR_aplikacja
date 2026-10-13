@@ -51,6 +51,8 @@ sudo apt-get install tesseract-ocr tesseract-ocr-pol tesseract-ocr-eng
 
 Windows: instalator UB Mannheim (np. `choco install tesseract`) do `C:\Program Files\Tesseract-OCR`; jeśli brakuje `pol.traineddata`, skopiuj go do podfolderu `tessdata`. Aplikacja znajduje Tesseracta w tej kolejności: zmienna `LOKALOCR_TESSERACT` (ścieżka do pliku), kopia dołączona do aplikacji (folder `tesseract/` obok programu), `PATH`, domyślny folder instalacji w Windows. Folder danych językowych można wskazać zmienną `LOKALOCR_TESSDATA`.
 
+Interfejs (PySide6) na Linuksie bez pulpitu potrzebuje jeszcze bibliotek systemowych Qt: `sudo apt-get install libegl1 libgl1 libxkbcommon0 libfontconfig1 libdbus-1-3`. Testy UI działają w trybie `QT_QPA_PLATFORM=offscreen` (ustawianym automatycznie w `tests/conftest.py`).
+
 Testy oznaczone `@pytest.mark.tesseract` są pomijane, jeśli Tesseracta nie ma. W CI ustawiamy `LOKALOCR_REQUIRE_TESSERACT=1`, żeby brak Tesseracta był błędem, a nie cichym pominięciem.
 
 Tesseract jest uruchamiany z `OMP_THREAD_LIMIT=1`: wątki OpenMP w Tesseract aktywnie czekają, przez co kilka równoległych procesów potrafi zwolnić się nawzajem o rzędy wielkości, a jeden wątek jest szybszy nawet na bezczynnej maszynie.

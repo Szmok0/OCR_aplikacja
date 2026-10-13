@@ -39,7 +39,8 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y -q tesseract-ocr tesseract-ocr-pol tesseract-ocr-eng
+          sudo apt-get install -y -q tesseract-ocr tesseract-ocr-pol tesseract-ocr-eng \
+            libegl1 libgl1 libxkbcommon0 libfontconfig1 libdbus-1-3
       - name: Install Tesseract (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
