@@ -7,7 +7,7 @@ import pytest
 from PIL import Image
 
 from lokalocr import netguard
-from lokalocr.errors import CancelledError, EmptyResultError
+from lokalocr.errors import CancelledError, CorruptFileError, EmptyResultError
 from lokalocr.model import BBox, Block, BlockType, Line, Page
 from lokalocr.pipeline import EtaEstimator, Pipeline, ProcessOptions, ProgressEvent
 from lokalocr.preprocess import PreprocessOptions
@@ -98,3 +98,62 @@ def test_full_processing_with_network_guard_active(fixtures_dir: Path) -> None:
     truth = fx.make_contract(150, pages=2).truth
     assert doc.page_count == 2
     assert cer(truth, doc.plain_text()) < 0.05
+
+
+class SlowEngine(FakeEngine):
+    def __init__(self, delay: float, fail_on: int | None = None) -> None:
+        super().__init__()
+        self.delay = delay
+        self.fail_on = fail_on
+        self.lock = threading.Lock()
+        self.active = 0
+        self.max_active = 0
+
+    def recognize(
+        self,
+        image: Image.Image,
+        lang: str,
+        *,
+        dpi: int,
+        page_number: int = 1,
+        cancel: threading.Event | None = None,
+    ) -> Page:
+        with self.lock:
+            self.active += 1
+            self.max_active = max(self.max_active, self.active)
+        try:
+            import time
+
+            time.sleep(self.delay * (2 if page_number == 1 else 1))  # page 1 finishes last
+            if page_number == self.fail_on:
+                raise CorruptFileError("bad page")
+            return super().recognize(image, lang, dpi=dpi, page_number=page_number)
+        finally:
+            with self.lock:
+                self.active -= 1
+
+
+def _four_pages(tmp_path: Path) -> Path:
+    import make_fixtures as fx
+
+    doc = fx.make_contract(72, pages=4)
+    return fx.save(doc, tmp_path / "four.pdf")
+
+
+def test_parallel_pages_keep_order_and_overlap(tmp_path: Path) -> None:
+    import time
+
+    path = _four_pages(tmp_path)
+    engine = SlowEngine(0.2)
+    started = time.monotonic()
+    doc = Pipeline(engine, workers=3).process(path, FAST)
+    elapsed = time.monotonic() - started
+    assert [p.number for p in doc.pages] == [1, 2, 3, 4]
+    assert engine.max_active == 3
+    assert elapsed < 0.2 * 5 * 0.8  # clearly faster than sequential (~1.0 s)
+
+
+def test_parallel_page_error_propagates(tmp_path: Path) -> None:
+    path = _four_pages(tmp_path)
+    with pytest.raises(CorruptFileError):
+        Pipeline(SlowEngine(0.05, fail_on=2), workers=2).process(path, FAST)

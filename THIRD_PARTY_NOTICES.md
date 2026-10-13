@@ -6,7 +6,7 @@ LokalOCR korzysta z poniższych komponentów. Pełne teksty licencji dołączony
 
 | Komponent | Gdzie | Licencja | Tekst licencji |
 |---|---|---|---|
-| Ikony [Lucide](https://lucide.dev) (lucide-static 1.56.0; część wywodzi się z Feather, MIT) | `src/lokalocr/ui/resources/icons/*.svg` | ISC | `src/lokalocr/ui/resources/icons/LICENSE-lucide.txt` |
+| Ikony Lucide — lucide.dev (lucide-static 1.56.0; część wywodzi się z Feather, MIT) | `src/lokalocr/ui/resources/icons/*.svg` | ISC | `src/lokalocr/ui/resources/icons/LICENSE-lucide.txt` |
 | Ikona aplikacji (zastępcza, własny projekt) | `src/lokalocr/ui/resources/app_icon.svg` | licencja projektu | — |
 
 Ikony Lucide skopiowano bez zmian kształtu, z nazwami zgodnymi z konwencją z `CLAUDE.md` §7.8 (np. `status_ok.svg` = `circle-check`). Kolor jest podmieniany w czasie działania (`currentColor` → kolor motywu).

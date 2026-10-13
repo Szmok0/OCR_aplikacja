@@ -10,14 +10,15 @@ from lokalocr import netguard
 
 netguard.install()
 
-import logging  # noqa: E402
 import sys  # noqa: E402
 from collections.abc import Sequence  # noqa: E402
+from pathlib import Path  # noqa: E402
 
 from PySide6.QtCore import Qt  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
-from lokalocr import __version__, tempdir  # noqa: E402
+from lokalocr import __version__, config, logsetup, tempdir  # noqa: E402
+from lokalocr.config import Settings  # noqa: E402
 from lokalocr.engines.base import OcrEngine  # noqa: E402
 from lokalocr.ui import icons, theme  # noqa: E402
 from lokalocr.ui import strings_pl as S  # noqa: E402
@@ -30,7 +31,7 @@ def _engine() -> OcrEngine:
     return TesseractEngine()
 
 
-def create_app(argv: Sequence[str] | None = None) -> QApplication:
+def create_app(argv: Sequence[str] | None = None, settings: Settings | None = None) -> QApplication:
     app = QApplication.instance()
     if not isinstance(app, QApplication):
         QApplication.setHighDpiScaleFactorRoundingPolicy(
@@ -42,16 +43,20 @@ def create_app(argv: Sequence[str] | None = None) -> QApplication:
     app.setApplicationVersion(__version__)
     app.setOrganizationName("LokalOCR")
     app.setWindowIcon(icons.app_icon())
-    theme.apply(app, "system")
+    s = settings or Settings()
+    theme.apply(app, s.theme, s.font_size or None)
     return app
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
+    settings = config.load()
+    logsetup.configure(settings.log_level)
+    tempdir.set_root(Path(settings.temp_dir) if settings.temp_dir else None)
     tempdir.cleanup()  # leftovers from a previous crash
-    app = create_app(argv)
-    window = MainWindow(_engine)
+    app = create_app(argv, settings)
+    window = MainWindow(_engine, settings=settings, persist_settings=True)
     window.show()
+    window.check_engine()
     try:
         return app.exec()
     finally:

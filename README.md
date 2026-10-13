@@ -26,6 +26,6 @@ lokalocr --help
 
 Kody wyjścia: `0` — wszystko przetworzone, `1` — część plików się nie udała, `2` — błędne wywołanie lub brak plików, `3` — brak Tesseracta albo danych językowych, `130` — przerwano (Ctrl+C).
 
-Status: etap 4 (podgląd strony, zapis DOCX, PDF z warstwą tekstową, Markdown, HTML).
+Status: etap 5 (ustawienia, motywy jasny/ciemny, lokalna pomoc, kontrast WCAG AA).
 
 Licencje komponentów: [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
