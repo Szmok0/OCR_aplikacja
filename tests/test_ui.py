@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import shutil
 import threading
 import time
@@ -69,6 +70,20 @@ class FakeEngine:
             ],
         )
 
+    def searchable_pdf(
+        self,
+        image: Image.Image,
+        lang: str,
+        *,
+        dpi: int,
+        cancel: threading.Event | None = None,
+        jpeg_quality: int | None = 80,
+    ) -> bytes:
+        self.recognize(image, lang, dpi=dpi, cancel=cancel)
+        buf = io.BytesIO()
+        image.convert("RGB").save(buf, "PDF", resolution=float(dpi))
+        return buf.getvalue()
+
     def available_languages(self) -> frozenset[str]:
         return frozenset({"pol", "eng"})
 
@@ -108,7 +123,7 @@ def test_starts_without_dialogs(qtbot: QtBot) -> None:
     assert QApplication.activeModalWidget() is None
     assert window.offline_badge.label.text() == S.OFFLINE_BADGE
     assert window.queue_title.text() == "Kolejka plików (0)"
-    assert not window.save_txt_btn.isEnabled()
+    assert not window.save_main_btn.isEnabled()
     assert window.result.empty_title.text() == S.EMPTY_RESULT_TITLE
 
 
@@ -129,7 +144,7 @@ def test_queue_processes_files_sequentially(qtbot: QtBot, files: Path) -> None:
     status = window.result.status.text()
     assert "Stron: 2" in status and "Pewność OCR: 94%" in status
     assert "Język OCR: polski + angielski" in status
-    assert window.save_txt_btn.isEnabled()
+    assert window.save_main_btn.isEnabled()
 
 
 def test_layout_switch_and_search(qtbot: QtBot, files: Path) -> None:
@@ -296,3 +311,110 @@ def test_themes_apply(qtbot: QtBot, name: theme.ThemeName) -> None:
     tokens = theme.apply(app, name)
     assert window.palette().window().color().name().upper() == tokens.bg.upper()
     theme.apply(app, "light")
+
+
+# --- stage 4: tabs, preview, export ------------------------------------------------
+
+
+def test_preview_shows_pages_and_navigates(qtbot: QtBot, files: Path) -> None:
+    window = make_window(qtbot, FakeEngine())
+    window.add_paths([files / "contract.pdf"])
+    wait_idle(qtbot, window)
+    preview = window.preview
+    qtbot.waitUntil(lambda: preview._pixmap_item is not None, timeout=5000)
+    assert preview.page_total.text() == "/ 2"
+    assert not preview.prev_btn.isEnabled() and preview.next_btn.isEnabled()
+    preview.next_page()
+    assert preview.index == 1
+    qtbot.waitUntil(lambda: (files / "contract.pdf", 1) in preview._cache, timeout=5000)
+    zoom = preview.view.zoom
+    preview.view.zoom_in()
+    assert preview.view.zoom > zoom
+    assert preview.zoom_label.text() == f"{round(preview.view.zoom * 100)}%"
+    preview.rotate(90)
+    assert preview.view.rotation == 90
+
+
+def test_tabs_switch_workspace(qtbot: QtBot, files: Path) -> None:
+    window = make_window(qtbot, FakeEngine())
+    window.add_paths([files / "cv.png"])
+    wait_idle(qtbot, window)
+    assert not window.tabs.isTabEnabled(2)  # images: full mode only
+    assert not window.structure_btn.isEnabled()
+    window.tabs.setCurrentIndex(1)
+    assert window.result.isHidden()
+    qtbot.waitUntil(lambda: bool(window.preview._overlay_items), timeout=5000)
+    window.tabs.setCurrentIndex(0)
+    assert not window.result.isHidden()
+    assert not window.preview._overlay_items
+
+
+def _save_to(monkeypatch: pytest.MonkeyPatch, target: Path) -> list[str]:
+    filters: list[str] = []
+
+    def fake_dialog(*args: object, **_k: object) -> tuple[str, str]:
+        filters.append(str(args[3]))
+        return str(target), ""
+
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", fake_dialog)
+    return filters
+
+
+@pytest.mark.parametrize("fmt", ["docx", "md", "html", "txt"])
+def test_save_formats(
+    qtbot: QtBot,
+    files: Path,
+    tmp_path_factory: pytest.TempPathFactory,
+    monkeypatch: pytest.MonkeyPatch,
+    fmt: str,
+) -> None:
+    out = tmp_path_factory.mktemp("out") / "wynik"
+    window = make_window(qtbot, FakeEngine())
+    window.add_paths([files / "cv.png"])
+    wait_idle(qtbot, window)
+    _save_to(monkeypatch, out)
+    window.save(fmt)
+    saved = out.with_name(f"wynik.{fmt}")
+    assert saved.exists() and saved.stat().st_size > 0
+    if fmt != "docx":
+        assert "Zażółć gęślą jaźń" in saved.read_text(encoding="utf-8")
+
+
+def test_save_pdf_in_background(
+    qtbot: QtBot,
+    files: Path,
+    tmp_path_factory: pytest.TempPathFactory,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    out = tmp_path_factory.mktemp("out") / "umowa_ocr.pdf"
+    engine = FakeEngine(delay=0.2)
+    window = make_window(qtbot, engine)
+    window.add_paths([files / "contract.pdf"])
+    wait_idle(qtbot, window)
+    _save_to(monkeypatch, out)
+    window.save("pdf")
+    assert window.exporter.busy
+    assert window.result.progress_title.text() == S.EXPORTING_TITLE
+    qtbot.waitUntil(lambda: not window.exporter.busy, timeout=10000)
+    qtbot.waitUntil(lambda: out.exists(), timeout=5000)
+    assert out.read_bytes().startswith(b"%PDF")
+    assert window.result.stack.currentIndex() == window.result.PAGE_RESULT
+
+
+def test_cancel_pdf_export(
+    qtbot: QtBot,
+    files: Path,
+    tmp_path_factory: pytest.TempPathFactory,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    out = tmp_path_factory.mktemp("out") / "x.pdf"
+    engine = FakeEngine()
+    window = make_window(qtbot, engine)
+    window.add_paths([files / "contract.pdf"])
+    wait_idle(qtbot, window)
+    engine.block = True
+    _save_to(monkeypatch, out)
+    window.save("pdf")
+    window.cancel_current()  # Esc while exporting cancels the export
+    qtbot.waitUntil(lambda: not window.exporter.busy, timeout=5000)
+    assert not out.exists()

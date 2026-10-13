@@ -145,3 +145,29 @@ def test_end_to_end_with_network_guard(workdir: Path) -> None:
     assert cli.main([str(workdir / "cv.png"), "--layout", "original", "-q"]) == 0
     text = (workdir / "cv_ocr.txt").read_text(encoding="utf-8")
     assert "Przykładowa" in text and "WYKSZTAŁCENIE" in text
+
+
+@pytest.mark.usefixtures("fake_engine")
+@pytest.mark.parametrize("fmt", ["docx", "md", "html"])
+def test_other_formats(workdir: Path, fmt: str) -> None:
+    assert cli.main([str(workdir / "cv.png"), "--format", fmt, "-q"]) == 0
+    out = workdir / f"cv_ocr.{fmt}"
+    assert out.exists() and out.stat().st_size > 0
+
+
+def test_pdf_cannot_go_to_stdout(workdir: Path) -> None:
+    with pytest.raises(SystemExit):
+        cli.main([str(workdir / "cv.png"), "--format", "pdf", "-o", "-"])
+
+
+@pytest.mark.tesseract
+def test_searchable_pdf_end_to_end(workdir: Path) -> None:
+    import pypdfium2 as pdfium
+
+    assert cli.main([str(workdir / "contract.pdf"), "--format", "pdf", "--dpi", "150", "-q"]) == 0
+    pdf = pdfium.PdfDocument(str(workdir / "contract_ocr.pdf"))
+    try:
+        assert len(pdf) == 2
+        assert "Zamawiaj" in pdf[0].get_textpage().get_text_range()
+    finally:
+        pdf.close()

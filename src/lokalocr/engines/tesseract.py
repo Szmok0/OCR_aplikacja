@@ -257,21 +257,26 @@ class TesseractEngine:
         *,
         dpi: int,
         cancel: threading.Event | None = None,
+        jpeg_quality: int | None = 80,
     ) -> bytes:
-        """Single-page PDF with the page image and an invisible text layer."""
+        """Single-page PDF with the page image and an invisible text layer.
+
+        With ``jpeg_quality`` the image goes in as JPEG, which Tesseract embeds
+        without re-encoding (a few hundred KB per page instead of megabytes).
+        """
         args = [
-            *self._base_args(),
-            "stdin",
-            "stdout",
-            "-l",
-            lang,
-            "--psm",
-            str(self.psm),
-            "--dpi",
-            str(dpi),
+            *self._base_args(), "stdin", "stdout",
+            "-l", lang, "--psm", str(self.psm), "--dpi", str(dpi),
             "pdf",
-        ]
-        return self._run(args, self._png_bytes(image, dpi), cancel)
+        ]  # fmt: skip
+        if jpeg_quality is None:
+            data = self._png_bytes(image, dpi)
+        else:
+            buf = io.BytesIO()
+            mode = "L" if image.mode in ("L", "1") else "RGB"
+            image.convert(mode).save(buf, "JPEG", quality=jpeg_quality, dpi=(dpi, dpi))
+            data = buf.getvalue()
+        return self._run(args, data, cancel)
 
 
 def _parse_words(tsv: str) -> list[_Word]:

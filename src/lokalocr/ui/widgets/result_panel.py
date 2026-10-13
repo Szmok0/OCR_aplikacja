@@ -209,6 +209,7 @@ class ResultPanel(QFrame):
         # Status line + copy button
         status = QHBoxLayout()
         self.status = muted_label("", small=True)
+        self.status.setWordWrap(True)
         self.status.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.copy_btn = QPushButton(S.COPY_TEXT)
         self.copy_btn.setToolTip(S.COPY_TEXT_TIP)
@@ -269,9 +270,10 @@ class ResultPanel(QFrame):
     def show_waiting(self, name: str) -> None:
         self.show_empty(S.WAITING_TITLE, S.waiting_hint(name))
 
-    def show_progress(self, event: ProgressEvent | None) -> None:
+    def show_progress(self, event: ProgressEvent | None, title: str = S.PROCESSING_TITLE) -> None:
         self._set_result_controls(False)
         self.stack.setCurrentIndex(self.PAGE_PROGRESS)
+        self.progress_title.setText(title)
         if event is None:
             self.progress_stage.setText(S.STAGE_LABELS["loading"])
             self.progress_bar.setValue(0)
