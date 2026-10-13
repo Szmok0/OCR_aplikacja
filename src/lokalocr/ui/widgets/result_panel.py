@@ -6,12 +6,14 @@ cancel button instead.
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QEvent, QObject, Qt, Signal
 from PySide6.QtGui import (
     QAction,
     QColor,
     QFont,
     QFontDatabase,
+    QKeyEvent,
+    QKeySequence,
     QTextCharFormat,
     QTextCursor,
     QTextDocument,
@@ -200,6 +202,7 @@ class ResultPanel(QFrame):
             | Qt.TextInteractionFlag.TextSelectableByKeyboard
         )
         self.text.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+        self.text.installEventFilter(self)
         self.copy_corner = QToolButton(self.text)
         self.copy_corner.setToolTip(S.COPY_VISIBLE)
         self.copy_corner.clicked.connect(self.copy_text)
@@ -220,6 +223,19 @@ class ResultPanel(QFrame):
 
         self.refresh_icons()
         self.show_empty()
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        # §7.9: Ctrl+C on the text copies the selection, or everything if
+        # nothing is selected.
+        if (
+            watched is self.text
+            and isinstance(event, QKeyEvent)
+            and event.type() == QEvent.Type.KeyPress
+            and event.matches(QKeySequence.StandardKey.Copy)
+        ):
+            self.copy_text()
+            return True
+        return super().eventFilter(watched, event)
 
     def _on_original_toggled(self, on: bool) -> None:
         if on:

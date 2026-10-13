@@ -17,6 +17,11 @@ from lokalocr import netguard
 def pytest_sessionstart(session: pytest.Session) -> None:
     # The whole test suite runs offline, like the application (§6).
     netguard.install()
+    # Settings and logs written by tests stay out of the real user folders.
+    if "LOKALOCR_CONFIG_DIR" not in os.environ:
+        import tempfile
+
+        os.environ["LOKALOCR_CONFIG_DIR"] = tempfile.mkdtemp(prefix="lokalocr-test-config-")
 
 
 def _tesseract_ready() -> bool:

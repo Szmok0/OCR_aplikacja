@@ -418,3 +418,181 @@ def test_cancel_pdf_export(
     window.cancel_current()  # Esc while exporting cancels the export
     qtbot.waitUntil(lambda: not window.exporter.busy, timeout=5000)
     assert not out.exists()
+
+
+# --- stage 5: settings, help, clipboard, themes ---------------------------------------
+
+
+def test_settings_dialog_roundtrip(qtbot: QtBot, tmp_path: Path) -> None:
+    from lokalocr.config import Settings
+    from lokalocr.ui.settings_dialog import CATEGORIES, SettingsDialog
+
+    original = Settings(
+        default_lang="pol",
+        pdf_dpi=200,
+        theme="dark",
+        output_dir=str(tmp_path),
+        clipboard_clear_minutes=5,
+    )
+    dialog = SettingsDialog(
+        original, engine_info=lambda: ("tesseract 5.3.4", frozenset({"pol", "eng"}))
+    )
+    qtbot.addWidget(dialog)
+    assert dialog.categories.count() == len(CATEGORIES)
+    assert dialog.collect() == original.validated()
+    assert "tesseract 5.3.4" in dialog.lang_status.text()
+    dialog.dpi_combo.setCurrentIndex(dialog.dpi_combo.findData(400))
+    dialog.theme_radios["light"].setChecked(True)
+    dialog.pattern_edit.setText("skan_{nazwa}")
+    dialog.accept()
+    assert dialog.result_settings.pdf_dpi == 400
+    assert dialog.result_settings.theme == "light"
+    assert dialog.result_settings.name_pattern == "skan_{nazwa}"
+
+
+def test_settings_dialog_rejects_bad_pattern(qtbot: QtBot, monkeypatch: pytest.MonkeyPatch) -> None:
+    from lokalocr.config import Settings
+    from lokalocr.ui.settings_dialog import SettingsDialog
+
+    monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: None)
+    dialog = SettingsDialog(Settings())
+    qtbot.addWidget(dialog)
+    dialog.pattern_edit.setText("bez_nazwy")
+    dialog.accept()
+    assert dialog.result() != dialog.DialogCode.Accepted
+    assert dialog.result_settings == Settings()
+
+
+def test_about_page_is_local_and_offline(qtbot: QtBot) -> None:
+    from PySide6.QtWidgets import QTextBrowser
+
+    from lokalocr.config import Settings
+    from lokalocr.ui.settings_dialog import SettingsDialog
+
+    dialog = SettingsDialog(Settings())
+    qtbot.addWidget(dialog)
+    browser = dialog.findChild(QTextBrowser)
+    assert browser is not None
+    assert not browser.openLinks() and not browser.openExternalLinks()
+    assert "Lucide" in browser.toPlainText()
+
+
+def test_help_window_shows_local_guide(qtbot: QtBot) -> None:
+    window = make_window(qtbot, FakeEngine())
+    window.open_help()
+    assert window._help is not None and window._help.isVisible()
+    browser = window._help.browser
+    assert not browser.openLinks() and not browser.openExternalLinks()
+    assert "Szybki start" in browser.toPlainText()
+
+
+def test_apply_settings_updates_window(qtbot: QtBot, tmp_path: Path) -> None:
+    from lokalocr.config import Settings
+
+    window = make_window(qtbot, FakeEngine())
+    window.apply_settings(
+        Settings(
+            default_lang="eng",
+            default_format="md",
+            theme="dark",
+            auto_preprocess=False,
+            keep_structure=False,
+            temp_dir=str(tmp_path / "tmp"),
+        )
+    )
+    assert window.lang_combo.currentData() == "eng"
+    assert window.save_main_btn.text() == "Zapisz jako Markdown"
+    assert not window.preprocess_toggle.isChecked()
+    assert not window.keep_structure_cb.isChecked()
+    assert window.options().preprocess.enabled is False
+    assert tempdir.app_temp_dir() == tmp_path / "tmp"
+    assert theme.tokens() is theme.DARK
+    window.apply_settings(Settings())
+    assert theme.tokens() is not theme.DARK or theme.resolve("system") is theme.DARK
+
+
+def test_save_to_output_folder_without_dialog(
+    qtbot: QtBot,
+    files: Path,
+    tmp_path_factory: pytest.TempPathFactory,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from lokalocr.config import Settings
+
+    out = tmp_path_factory.mktemp("out")
+    window = make_window(qtbot, FakeEngine())
+    window.apply_settings(Settings(output_dir=str(out), name_pattern="ocr_{nazwa}"))
+    window.add_paths([files / "cv.png"])
+    wait_idle(qtbot, window)
+
+    def no_dialog(*_a: object, **_k: object) -> tuple[str, str]:
+        raise AssertionError("save dialog must not open")
+
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", no_dialog)
+    window.save("txt")
+    assert (out / "ocr_cv.txt").exists()
+    # Existing file: asks first; "No" keeps the old file.
+    (out / "ocr_cv.txt").write_text("stare", encoding="utf-8")
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.No)
+    window.save("txt")
+    assert (out / "ocr_cv.txt").read_text(encoding="utf-8") == "stare"
+
+
+def test_clipboard_cleared_after_timeout(qtbot: QtBot, files: Path) -> None:
+    from lokalocr.config import Settings
+
+    window = make_window(qtbot, FakeEngine())
+    window.apply_settings(Settings(clipboard_clear_minutes=1))
+    window.add_paths([files / "cv.png"])
+    wait_idle(qtbot, window)
+    window.result.copy_text()
+    assert "Zażółć" in QApplication.clipboard().text()
+    assert window._clipboard_timer.isActive()
+    window._clear_clipboard()  # what the timer does after the delay
+    assert QApplication.clipboard().text() == ""
+
+
+def test_clipboard_not_cleared_if_user_copied_something_else(qtbot: QtBot, files: Path) -> None:
+    from lokalocr.config import Settings
+
+    window = make_window(qtbot, FakeEngine())
+    window.apply_settings(Settings(clipboard_clear_minutes=1))
+    window.add_paths([files / "cv.png"])
+    wait_idle(qtbot, window)
+    window.result.copy_text()
+    QApplication.clipboard().setText("coś innego")
+    window._clear_clipboard()
+    assert QApplication.clipboard().text() == "coś innego"
+
+
+def test_ctrl_c_without_selection_copies_all(qtbot: QtBot, files: Path) -> None:
+    from PySide6.QtCore import Qt as QtCore_Qt
+
+    window = make_window(qtbot, FakeEngine())
+    window.add_paths([files / "cv.png"])
+    wait_idle(qtbot, window)
+    QApplication.clipboard().clear()
+    window.result.text.setFocus()
+    qtbot.keyClick(  # type: ignore[no-untyped-call]
+        window.result.text, QtCore_Qt.Key.Key_C, QtCore_Qt.KeyboardModifier.ControlModifier
+    )
+    assert "Zażółć gęślą jaźń" in QApplication.clipboard().text()
+
+
+def test_engine_banner(qtbot: QtBot) -> None:
+    from lokalocr.errors import EngineMissingError
+
+    def missing() -> FakeEngine:
+        raise EngineMissingError("no tesseract")
+
+    create_app(["test"])
+    window = MainWindow(missing)
+    qtbot.addWidget(window)
+    window.show()
+    window.check_engine()
+    qtbot.waitUntil(lambda: window.banner.isVisible(), timeout=5000)
+
+    ok = make_window(qtbot, FakeEngine())
+    ok.check_engine()
+    qtbot.wait(200)
+    assert not ok.banner.isVisible()

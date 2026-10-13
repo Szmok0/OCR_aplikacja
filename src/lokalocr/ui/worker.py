@@ -78,7 +78,7 @@ class ProcessingController(QObject):
 
         self._probe_pool.submit(run)
 
-    def start(self, item_id: int, path: Path, options: ProcessOptions) -> None:
+    def start(self, item_id: int, path: Path, options: ProcessOptions, workers: int = 1) -> None:
         if self.busy:
             raise RuntimeError("already processing")
         cancel = threading.Event()
@@ -90,7 +90,7 @@ class ProcessingController(QObject):
             try:
                 if self._engine is None:
                     self._engine = self._engine_factory()
-                pipeline = Pipeline(self._engine)
+                pipeline = Pipeline(self._engine, workers=workers)
                 document = pipeline.process(
                     path,
                     options,

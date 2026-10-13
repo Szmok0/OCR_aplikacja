@@ -5,9 +5,10 @@ from __future__ import annotations
 import logging
 import threading
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 
-from PySide6.QtCore import QModelIndex, QPoint, QSize, Qt, QTimer, QUrl
+from PySide6.QtCore import QModelIndex, QPoint, QSize, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import (
     QCloseEvent,
     QDesktopServices,
@@ -20,9 +21,11 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QApplication,
     QButtonGroup,
     QCheckBox,
     QComboBox,
+    QDialog,
     QFileDialog,
     QFrame,
     QHBoxLayout,
@@ -41,10 +44,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from lokalocr import tempdir
+from lokalocr import config, logsetup, tempdir
+from lokalocr.config import Settings
 from lokalocr.engines.base import OcrEngine
 from lokalocr.errors import ErrorCode, LokalOcrError
-from lokalocr.exporters.common import OutputExistsError, default_output_name
+from lokalocr.exporters.common import OutputExistsError
 from lokalocr.exporters.docx import export_docx
 from lokalocr.exporters.html import export_html
 from lokalocr.exporters.markdown import export_markdown
@@ -53,10 +57,11 @@ from lokalocr.exporters.txt import export_txt
 from lokalocr.loader import SUPPORTED_EXTENSIONS, detect_format
 from lokalocr.model import Document
 from lokalocr.pipeline import LANGUAGES, ProcessOptions, ProgressEvent
-from lokalocr.preprocess import PreprocessOptions
-from lokalocr.ui import icons
+from lokalocr.ui import icons, theme
 from lokalocr.ui import strings_pl as S
+from lokalocr.ui.help_window import HelpWindow
 from lokalocr.ui.queue_model import ITEM_ROLE, QueueItem, QueueModel, Status
+from lokalocr.ui.settings_dialog import SettingsDialog
 from lokalocr.ui.widgets.basic import (
     DropZone,
     OfflineBadge,
@@ -75,7 +80,6 @@ _log = logging.getLogger(__name__)
 
 TAB_TEXT, TAB_PREVIEW, TAB_IMAGES = range(3)
 FORMATS = ("docx", "txt", "pdf", "md", "html")
-DEFAULT_FORMAT = "docx"
 FORMAT_ICONS = {"txt": "file_txt", "pdf": "file_pdf", "md": "file_markdown", "html": "file_html"}
 
 
@@ -115,8 +119,14 @@ class QueueList(QListView):
 
 
 class MainWindow(QMainWindow):
+    _engine_signal = Signal(bool)
+
     def __init__(
-        self, engine_factory: Callable[[], OcrEngine], full_mode_available: bool = False
+        self,
+        engine_factory: Callable[[], OcrEngine],
+        full_mode_available: bool = False,
+        settings: Settings | None = None,
+        persist_settings: bool = False,
     ) -> None:
         super().__init__()
         self.setWindowTitle(S.APP_NAME)
@@ -125,6 +135,14 @@ class MainWindow(QMainWindow):
         self.resize(1360, 860)
         self.setMinimumSize(QSize(980, 620))
         self.full_mode_available = full_mode_available
+        self.settings = settings or Settings()
+        self._persist_settings = persist_settings
+        tempdir.set_root(Path(self.settings.temp_dir) if self.settings.temp_dir else None)
+        self._help: HelpWindow | None = None
+        self._clipboard_text: str | None = None
+        self._clipboard_timer = QTimer(self)
+        self._clipboard_timer.setSingleShot(True)
+        self._clipboard_timer.timeout.connect(self._clear_clipboard)
 
         self.queue = QueueModel()
         self.controller = ProcessingController(engine_factory)
@@ -146,6 +164,12 @@ class MainWindow(QMainWindow):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
         root.addWidget(self._build_header())
+        self.banner = QLabel(S.ENGINE_BANNER)
+        self.banner.setObjectName("ErrorBanner")
+        self.banner.setWordWrap(True)
+        self.banner.setContentsMargins(12, 8, 12, 8)
+        self.banner.hide()
+        root.addWidget(self.banner)
 
         body = QWidget()
         body_layout = QVBoxLayout(body)
@@ -175,6 +199,7 @@ class MainWindow(QMainWindow):
         self.toast.action_triggered.connect(self._show_last_saved)
         self._last_saved: Path | None = None
 
+        self._engine_signal.connect(self._on_engine_checked)
         self._install_shortcuts()
         self._update_actions()
         self._sized = False
@@ -274,6 +299,9 @@ class MainWindow(QMainWindow):
         for code in LANGUAGES:
             self.lang_combo.addItem(S.LANGUAGE_LABELS[code], code)
         self.lang_combo.setAccessibleName(S.OCR_LANGUAGE)
+        self.lang_combo.setCurrentIndex(
+            max(0, self.lang_combo.findData(self.settings.default_lang))
+        )
         layout.addWidget(self.lang_combo)
 
         layout.addWidget(muted_label(S.WORK_MODE, small=True))
@@ -281,6 +309,8 @@ class MainWindow(QMainWindow):
         self.basic_radio = QRadioButton(S.MODE_BASIC)
         self.full_radio = QRadioButton(S.MODE_FULL)
         self.basic_radio.setChecked(True)
+        if self.full_mode_available and self.settings.default_mode == "full":
+            self.full_radio.setChecked(True)
         self.basic_radio.setToolTip(S.MODE_BASIC_TIP)
         group = QButtonGroup(panel)
         group.addButton(self.basic_radio)
@@ -298,7 +328,7 @@ class MainWindow(QMainWindow):
         auto = QHBoxLayout()
         auto_label = QLabel(S.AUTO_PREPROCESS)
         self.preprocess_toggle = ToggleSwitch()
-        self.preprocess_toggle.setChecked(True)
+        self.preprocess_toggle.setChecked(self.settings.auto_preprocess)
         self.preprocess_toggle.setToolTip(S.AUTO_PREPROCESS_TIP)
         self.preprocess_toggle.setAccessibleName(S.AUTO_PREPROCESS)
         auto_label.setBuddy(self.preprocess_toggle)
@@ -353,12 +383,12 @@ class MainWindow(QMainWindow):
         layout.setSpacing(8)
 
         self.save_main_btn = QToolButton()
-        self.save_main_btn.setText(S.save_as(DEFAULT_FORMAT))
+        self.save_main_btn.setText(S.save_as(self.settings.default_format))
         self.save_main_btn.setProperty("primary", True)
         self.save_main_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         self.save_main_btn.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
-        self.save_main_btn.setToolTip(f"{S.FORMAT_TIPS[DEFAULT_FORMAT]} (Ctrl+S)")
-        self.save_main_btn.clicked.connect(lambda: self.save(DEFAULT_FORMAT))
+        self.save_main_btn.setToolTip(f"{S.FORMAT_TIPS[self.settings.default_format]} (Ctrl+S)")
+        self.save_main_btn.clicked.connect(lambda: self.save(self.settings.default_format))
         menu = QMenu(self.save_main_btn)
         for fmt in FORMATS:
             action = menu.addAction(S.FORMAT_LABELS[fmt])
@@ -391,7 +421,7 @@ class MainWindow(QMainWindow):
         self.clean_text_cb.setEnabled(False)
         self.clean_text_cb.setToolTip(S.CLEAN_TEXT_TIP)
         self.keep_structure_cb = QCheckBox(S.KEEP_STRUCTURE)
-        self.keep_structure_cb.setChecked(True)
+        self.keep_structure_cb.setChecked(self.settings.keep_structure)
         self.keep_structure_cb.setToolTip(S.KEEP_STRUCTURE_TIP)
         self.structure_info = QLabel()
         self.structure_info.setToolTip(S.KEEP_STRUCTURE_TIP)
@@ -421,7 +451,7 @@ class MainWindow(QMainWindow):
             shortcut.activated.connect(slot)
 
         bind(QKeySequence.StandardKey.Open, self.browse_files)
-        bind(QKeySequence.StandardKey.Save, lambda: self.save(DEFAULT_FORMAT))
+        bind(QKeySequence.StandardKey.Save, lambda: self.save(self.settings.default_format))
         bind(QKeySequence.StandardKey.MoveToPreviousPage, self.preview.prev_page)
         bind(QKeySequence.StandardKey.MoveToNextPage, self.preview.next_page)
         bind(QKeySequence.StandardKey.ZoomIn, self.preview.view.zoom_in)
@@ -437,10 +467,14 @@ class MainWindow(QMainWindow):
     # --- queue -------------------------------------------------------------------
 
     def options(self) -> ProcessOptions:
+        preprocess = replace(
+            self.settings.preprocess_options(), enabled=self.preprocess_toggle.isChecked()
+        )
         return ProcessOptions(
             lang=str(self.lang_combo.currentData()),
             mode="full" if self.full_radio.isChecked() else "basic",
-            preprocess=PreprocessOptions(enabled=self.preprocess_toggle.isChecked()),
+            pdf_dpi=self.settings.pdf_dpi,
+            preprocess=preprocess,
         )
 
     def browse_files(self) -> None:
@@ -570,7 +604,7 @@ class MainWindow(QMainWindow):
         item.progress = 0.0
         item.options = options
         self.queue.changed(item.id)
-        self.controller.start(item.id, item.path, options)
+        self.controller.start(item.id, item.path, options, workers=self.settings.worker_count())
         self._refresh_selected()
 
     def cancel_current(self) -> None:
@@ -737,16 +771,28 @@ class MainWindow(QMainWindow):
         if self.exporter.busy:
             self.toast.show_message(S.EXPORT_BUSY)
             return
-        suggested = self._last_dir / default_output_name(item.path, fmt)
-        path_str, _ = QFileDialog.getSaveFileName(
-            self, S.SAVE_DIALOG_TITLE, str(suggested), S.FORMAT_FILTERS[fmt]
-        )
-        if not path_str:
-            return
-        path = Path(path_str)
-        if path.suffix.lower() != f".{fmt}":
-            path = path.with_name(path.name + f".{fmt}")
-        # The native dialog has already asked before overwriting.
+        name = self.settings.output_name(item.path.stem, fmt)
+        if self.settings.output_dir:
+            # Default output folder from the settings: no dialog, but never
+            # overwrite without asking (§7.3 zone 6).
+            path = Path(self.settings.output_dir) / name
+            if (
+                path.exists()
+                and QMessageBox.question(self, S.APP_NAME, S.overwrite_question(path.name))
+                != QMessageBox.StandardButton.Yes
+            ):
+                return
+        else:
+            suggested = self._last_dir / name
+            path_str, _ = QFileDialog.getSaveFileName(
+                self, S.SAVE_DIALOG_TITLE, str(suggested), S.FORMAT_FILTERS[fmt]
+            )
+            if not path_str:
+                return
+            path = Path(path_str)
+            if path.suffix.lower() != f".{fmt}":
+                path = path.with_name(path.name + f".{fmt}")
+        # Either the native dialog or the question above confirmed overwriting.
         overwrite = path.exists()
         document = item.document
         structure = self.keep_structure_cb.isChecked()
@@ -818,6 +864,18 @@ class MainWindow(QMainWindow):
 
     def _on_copied(self) -> None:
         self.toast.show_message(S.COPIED)
+        minutes = self.settings.clipboard_clear_minutes
+        if minutes > 0:
+            self._clipboard_text = QApplication.clipboard().text()
+            self._clipboard_timer.start(minutes * 60_000)
+
+    def _clear_clipboard(self) -> None:
+        clipboard = QApplication.clipboard()
+        # Only clear what we put there; the user may have copied something else since.
+        if self._clipboard_text is not None and clipboard.text() == self._clipboard_text:
+            clipboard.clear()
+            self.toast.show_message(S.CLIPBOARD_CLEARED)
+        self._clipboard_text = None
 
     def _show_last_saved(self) -> None:
         if self._last_saved is not None:
@@ -826,10 +884,81 @@ class MainWindow(QMainWindow):
     # --- header actions ------------------------------------------------------------------
 
     def open_settings(self) -> None:
-        QMessageBox.information(self, S.SETTINGS, S.SETTINGS_SOON)
+        dialog = SettingsDialog(
+            self.settings,
+            engine_info=self._engine_info,
+            full_mode_available=self.full_mode_available,
+            parent=self,
+        )
+        dialog.clear_temp_requested.connect(tempdir.cleanup)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self.apply_settings(dialog.result_settings)
+
+    def _engine_info(self) -> tuple[str, frozenset[str]] | None:
+        try:
+            engine = self.controller.engine_factory()
+            return engine.version(), engine.available_languages()
+        except LokalOcrError:
+            return None
+
+    def apply_settings(self, settings: Settings) -> None:
+        old = self.settings
+        self.settings = settings
+        if self._persist_settings:
+            try:
+                config.save(settings)
+            except OSError:
+                _log.warning("Saving settings failed (OSError)")
+        logsetup.configure(settings.log_level)
+        tempdir.set_root(Path(settings.temp_dir) if settings.temp_dir else None)
+        self.lang_combo.setCurrentIndex(max(0, self.lang_combo.findData(settings.default_lang)))
+        self.preprocess_toggle.setChecked(settings.auto_preprocess)
+        if self.full_mode_available:
+            (self.full_radio if settings.default_mode == "full" else self.basic_radio).setChecked(
+                True
+            )
+        self.keep_structure_cb.setChecked(settings.keep_structure)
+        self.save_main_btn.setText(S.save_as(settings.default_format))
+        self.save_main_btn.setToolTip(f"{S.FORMAT_TIPS[settings.default_format]} (Ctrl+S)")
+        if (old.theme, old.font_size) != (settings.theme, settings.font_size):
+            app = QApplication.instance()
+            if isinstance(app, QApplication):
+                theme.apply(app, settings.theme, settings.font_size or None)
+            self.refresh_theme()
+
+    def refresh_theme(self) -> None:
+        """Re-colour icons after a theme switch (no restart needed, §7.11)."""
+        icons.clear_cache()
+        self.logo.setPixmap(icons.app_pixmap(36))
+        self.settings_btn.setIcon(icons.icon("icon_settings"))
+        self.help_btn.setIcon(icons.icon("icon_help"))
+        self.offline_badge.refresh()
+        self.drop_zone.refresh_icons()
+        self.result.refresh_icons()
+        self.preview.refresh_theme()
+        self._refresh_action_icons()
+        self.queue_view.viewport().update()
 
     def open_help(self) -> None:
-        QMessageBox.information(self, S.HELP, S.HELP_SOON)
+        if self._help is None:
+            self._help = HelpWindow(self)
+        self._help.show()
+        self._help.raise_()
+        self._help.activateWindow()
+
+    def check_engine(self) -> None:
+        """Show a banner (not a dialog, §7.2) if Tesseract or its data is missing."""
+        signals = self._engine_signal
+
+        def run() -> None:
+            info = self._engine_info()
+            ok = info is not None and {"pol", "eng"} <= info[1]
+            signals.emit(ok)
+
+        threading.Thread(target=run, name="engine-check", daemon=True).start()
+
+    def _on_engine_checked(self, ok: bool) -> None:
+        self.banner.setVisible(not ok)
 
     # --- window-level drag & drop ----------------------------------------------------------
 

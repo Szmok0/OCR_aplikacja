@@ -76,8 +76,6 @@ SETTINGS = "Ustawienia"
 SETTINGS_TIP = "Ustawienia aplikacji (Ctrl+,)"
 HELP = "Pomoc"
 HELP_TIP = "Pomoc i informacje o programie (F1)"
-SETTINGS_SOON = "Okno ustawień pojawi się w kolejnej wersji."
-HELP_SOON = "Lokalna pomoc pojawi się w kolejnej wersji."
 
 DROP_TITLE = "Upuść pliki tutaj"
 DROP_FORMATS = "PDF, PNG, JPG, TIFF"
@@ -277,3 +275,116 @@ def tab_images(n: int) -> str:
 
 def open_images(n: int) -> str:
     return f"Otwórz folder z obrazami ({n})"
+
+
+# --- settings, help, about (stage 5) ---------------------------------------------
+
+OK = "OK"
+CLOSE = "Zamknij"
+HELP_TITLE = "LokalOCR — pomoc"
+HELP_MISSING = "Nie znaleziono pliku pomocy dołączonego do aplikacji."
+SETTINGS_CATEGORIES: dict[str, str] = {
+    "ocr": "OCR",
+    "processing": "Przetwarzanie",
+    "output": "Wyjście",
+    "appearance": "Wygląd",
+    "advanced": "Zaawansowane",
+    "about": "O programie",
+}
+SETTINGS_OCR_TITLE = "Ustawienia OCR"
+DEFAULT_LANGUAGE = "Język OCR (domyślny)"
+DEFAULT_MODE = "Tryb pracy (domyślny)"
+COMPONENT_STATUS = "Stan komponentów"
+FULL_MODE_MODELS = "Modele trybu pełnego"
+LANGUAGE_DATA = "Silnik i dane językowe"
+MODELS_INSTALLED = "zainstalowane"
+MODELS_MISSING = "brak — tryb pełny jest niedostępny"
+CHECKING = "Sprawdzanie…"
+ENGINE_NOT_FOUND = "Nie znaleziono silnika OCR (Tesseract)."
+
+SETTINGS_PROCESSING_TITLE = "Przetwarzanie"
+DESKEW_OPTION = "Prostowanie (deskew)"
+DESKEW_OPTION_TIP = "Wykrywa i usuwa przekrzywienie skanu"
+DENOISE_OPTION = "Usuwanie szumów"
+DENOISE_OPTION_TIP = (
+    "Usuwa kropki i ziarno; silniejszy filtr włącza się tylko przy zaszumionych skanach"
+)
+CONTRAST_OPTION = "Poprawa kontrastu"
+CONTRAST_OPTION_TIP = "Rozciąga jasność wyblakłych skanów"
+PDF_DPI = "Rozdzielczość renderowania PDF"
+PDF_DPI_TIP = "300 dpi to dobry kompromis. Wyższa rozdzielczość pomaga przy drobnym druku, ale jest wolniejsza."
+THREADS = "Liczba wątków"
+THREADS_AUTO = "Automatycznie"
+THREADS_TIP = "Ile stron może być rozpoznawanych jednocześnie. „Automatycznie” zostawia jeden rdzeń wolny dla interfejsu."
+
+SETTINGS_OUTPUT_TITLE = "Wyjście"
+OUTPUT_ASK = "Pytaj o miejsce zapisu za każdym razem"
+OUTPUT_FOLDER = "Zapisuj zawsze do folderu:"
+NO_FOLDER = "Nie wybrano folderu"
+CHOOSE_FOLDER = "Wybierz…"
+RESET_DEFAULT = "Domyślny"
+NAME_PATTERN = "Schemat nazwy pliku"
+NAME_PATTERN_TIP = (
+    "{nazwa} zostanie zastąpione nazwą pliku źródłowego, np. {nazwa}_ocr → umowa_ocr.docx"
+)
+NAME_PATTERN_INVALID = "Schemat nazwy pliku musi zawierać {nazwa}."
+OUTPUT_FOLDER_MISSING = (
+    "Wybierz folder wyjściowy albo zaznacz „Pytaj o miejsce zapisu za każdym razem”."
+)
+DEFAULT_FORMAT = "Domyślny format zapisu"
+TEMP_FOLDER = "Folder tymczasowy"
+CLIPBOARD_CLEAR = "Czyść schowek po"
+NEVER = "nigdy"
+CLIPBOARD_NOTE = (
+    "Aplikacja wyczyści schowek tylko wtedy, gdy nadal zawiera skopiowany z niej tekst. "
+    "Menedżery schowka (np. historia schowka w Windows) mogą przechowywać własną kopię."
+)
+
+SETTINGS_APPEARANCE_TITLE = "Wygląd"
+THEME = "Motyw"
+THEME_LABELS: dict[str, str] = {"system": "Systemowy", "light": "Jasny", "dark": "Ciemny"}
+FONT_SIZE = "Rozmiar czcionki"
+SYSTEM_DEFAULT = "systemowy"
+UI_LANGUAGE = "Język interfejsu"
+UI_LANGUAGE_TIP = "Kolejne języki interfejsu mogą zostać dodane w przyszłości."
+
+SETTINGS_ADVANCED_TITLE = "Zaawansowane"
+LOG_LEVEL = "Poziom logowania"
+LOG_LEVELS: dict[str, str] = {
+    "warning": "Tylko ostrzeżenia i błędy",
+    "info": "Informacje",
+    "debug": "Szczegółowy (diagnostyka)",
+}
+LOG_LEVEL_TIP = "Logi pomagają diagnozować problemy techniczne."
+LOG_NOTE = "Logi nigdy nie zawierają treści dokumentów ani nazw plików — tylko dane techniczne (liczba stron, czas, kody błędów)."
+OPEN_LOG_FOLDER = "Otwórz folder logów"
+CLEAR_TEMP = "Wyczyść pliki tymczasowe"
+TEMP_CLEARED = "Pliki tymczasowe zostały usunięte."
+RESTORE_DEFAULTS = "Przywróć ustawienia domyślne"
+RESTORE_QUESTION = "Przywrócić wszystkie ustawienia do wartości domyślnych? Zmiany zostaną zapisane po kliknięciu OK."
+
+NO_NETWORK_STATEMENT = "Aplikacja nie wykonuje połączeń sieciowych."
+LICENSES = "Licencje komponentów"
+LICENSES_MISSING = "Nie znaleziono pliku z licencjami dołączonego do aplikacji."
+ENGINE_BANNER = "Nie znaleziono silnika OCR (Tesseract) lub danych językowych. Rozpoznawanie tekstu nie zadziała — zainstaluj aplikację ponownie."
+CLIPBOARD_CLEARED = "Schowek został wyczyszczony."
+
+
+def engine_status(version: str, langs: str) -> str:
+    return f"{version}; dostępne języki: {langs}"
+
+
+def missing_languages(langs: str) -> str:
+    return f"Brak danych dla: {langs}"
+
+
+def about_components(engine: str, models: str) -> str:
+    return f"Silnik OCR: {engine}\nModele trybu pełnego: {models}"
+
+
+def overwrite_question(name: str) -> str:
+    return f"Plik „{name}” już istnieje w folderze wyjściowym. Zastąpić go?"
+
+
+def minutes(n: int) -> str:
+    return f"{n} min"
