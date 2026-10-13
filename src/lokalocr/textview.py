@@ -94,15 +94,26 @@ def merge_lines(lines: list[str]) -> str:
     return merged
 
 
-# A line that ends before this fraction of the block width is a real line
-# break (address, list, total), not a wrap inside a paragraph.
-_WRAP_FRACTION = 0.75
+# Lines shorter than this are treated as deliberate (addresses, totals, list
+# items); prose on a page is wider than this at any normal font size.
+MIN_PROSE_LINE = 40
 
 
-def _is_wrapped(line: Line, block: Block) -> bool:
-    if line.bbox is None or block.bbox is None or block.bbox.width <= 0:
+def _is_wrapped(line: Line, next_line: Line, block: Block) -> bool:
+    """True if ``line`` ended only because ``next_line``'s first word did not fit.
+
+    That is how text reflow decides line breaks, so it separates wrapped
+    paragraphs from real breaks (addresses, lists, totals) better than a
+    fixed width threshold.
+    """
+    words = next_line.text.split()
+    if line.bbox is None or block.bbox is None or not line.text or not words:
         return True
-    return line.bbox.right - block.bbox.x >= _WRAP_FRACTION * block.bbox.width
+    if len(line.text) < MIN_PROSE_LINE:
+        return False
+    char_w = line.bbox.width / max(1, len(line.text))
+    needed = (len(words[0]) + 1) * char_w
+    return line.bbox.right + needed > block.bbox.right
 
 
 def simplified_block(block: Block) -> str:
@@ -110,22 +121,40 @@ def simplified_block(block: Block) -> str:
         return block_text(block)
     if not block.lines:
         return merge_lines(block.text.splitlines())
-    if len(block.lines) < 3:
-        # Too few lines to tell wraps from breaks: keep short lines apart.
-        wrapped = [len(ln.text) > 40 and _is_wrapped(ln, block) for ln in block.lines[:-1]]
-    else:
-        wrapped = [_is_wrapped(ln, block) for ln in block.lines[:-1]]
+    lines = block.lines
     paragraphs: list[list[str]] = [[]]
-    for i, line in enumerate(block.lines):
+    for i, line in enumerate(lines):
         paragraphs[-1].append(line.text)
-        if i < len(wrapped) and not wrapped[i]:
+        if i + 1 < len(lines) and not _is_wrapped(line, lines[i + 1], block):
             paragraphs.append([])
     return "\n".join(merge_lines(p) for p in paragraphs if p)
 
 
+def _continues(prev: Block, block: Block) -> bool:
+    """Tesseract sometimes splits one paragraph into two blocks; detect that."""
+    if prev.type is not BlockType.PARAGRAPH or block.type is not BlockType.PARAGRAPH:
+        return False
+    if not prev.lines or not block.lines:
+        return False
+    return block.lines[0].text[:1].islower() and _is_wrapped(prev.lines[-1], block.lines[0], prev)
+
+
 def simplified(document: Document) -> str:
-    parts = [t for page in document.pages for b in page.blocks if (t := simplified_block(b))]
-    return "\n\n".join(parts)
+    out = ""
+    for page in document.pages:
+        prev: Block | None = None
+        for block in page.blocks:
+            text = simplified_block(block)
+            if not text:
+                continue
+            if not out:
+                out = text
+            elif prev is not None and _continues(prev, block):
+                out = merge_lines([out, text]) if out.endswith("-") else f"{out} {text}"
+            else:
+                out = f"{out}\n\n{text}"
+            prev = block
+    return out
 
 
 def render(document: Document, layout: TextLayout) -> str:
