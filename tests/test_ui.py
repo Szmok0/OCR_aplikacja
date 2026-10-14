@@ -129,6 +129,25 @@ def test_starts_without_dialogs(qtbot: QtBot) -> None:
     assert window.result.empty_title.text() == S.EMPTY_RESULT_TITLE
 
 
+def test_garbage_is_collected_only_in_gui_thread(qtbot: QtBot) -> None:
+    import gc
+    import weakref
+
+    create_app(["test"])
+    assert not gc.isenabled()  # worker threads never trigger a collection
+
+    class Node:
+        self_ref: object = None
+
+    node = Node()
+    node.self_ref = node  # a reference cycle: only the cyclic collector frees it
+    ref = weakref.ref(node)
+    del node
+    junk: list[list[int]] = [[] for _ in range(gc.get_threshold()[0] + 1)]  # trips the threshold
+    qtbot.waitUntil(lambda: ref() is None, timeout=5000)  # collected by the GUI timer
+    del junk
+
+
 def test_queue_processes_files_sequentially(qtbot: QtBot, files: Path) -> None:
     engine = FakeEngine(delay=0.05)
     window = make_window(qtbot, engine)
