@@ -158,13 +158,16 @@ def run(report_path: Path | None, full: bool = False) -> int:
         report["full_mode"] = is_available()
         report["models"] = str(find_models_dir() or "")
         if full:
+            basic_ok, ok = ok, False  # full mode must succeed too
             if not is_available():
-                ok = False
                 report["full_error"] = "full mode is not available"
             else:
+                from lokalocr.engines.docling_engine import DIAGNOSTICS_ENV
+
+                os.environ[DIAGNOSTICS_ENV] = "1"  # synthetic page: full tracebacks are fine
                 with tempfile.TemporaryDirectory(prefix="lokalocr-selftest-") as tmp:
                     report["full_ok"] = _run_full(report, Path(tmp))
-                ok = ok and bool(report["full_ok"])
+                ok = basic_ok and bool(report["full_ok"])
     except Exception as exc:  # the report must be written whatever happens
         report["error"] = f"{type(exc).__name__}: {exc}"
     report["ok"] = ok

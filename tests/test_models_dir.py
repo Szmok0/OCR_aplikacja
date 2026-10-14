@@ -42,3 +42,25 @@ def test_dot_files_dropped_in_transit_do_not_disable_full_mode(models_root: Path
     listed = {"repo/.gitattributes": 10, "repo/.gitignore": 5, "repo/model.bin": 3}
     folder = _install(models_root, {"repo/model.bin": b"abc"}, listed)
     assert docling_engine.find_models_dir() == folder
+
+
+def test_child_error_details_keep_messages_out_unless_diagnosing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail() -> None:
+        try:
+            raise OSError("C:/Users/x/tajny_dokument.pdf")
+        except OSError as inner:
+            raise RuntimeError("Tesseract is not available: tajny") from inner
+
+    try:
+        fail()
+    except RuntimeError as exc:
+        error = exc
+    monkeypatch.delenv(docling_engine.DIAGNOSTICS_ENV, raising=False)
+    safe = docling_engine._describe(error)
+    assert safe.startswith("RuntimeError at test_models_dir.py:")
+    assert "caused by OSError at" in safe
+    assert "tajny" not in safe
+    monkeypatch.setenv(docling_engine.DIAGNOSTICS_ENV, "1")
+    assert "tajny_dokument.pdf" in docling_engine._describe(error)
