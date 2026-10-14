@@ -603,6 +603,7 @@ def test_about_page_is_local_and_offline(qtbot: QtBot) -> None:
     assert browser is not None
     assert not browser.openLinks() and not browser.openExternalLinks()
     assert "Lucide" in browser.toPlainText()
+    assert dialog.credit_name.text() == "Jacek J."
 
 
 def test_help_window_shows_local_guide(qtbot: QtBot) -> None:

@@ -143,6 +143,12 @@ QLabel[heading="true"] {{ font-weight: 600; }}
 
 #Panel {{ background: {t.surface_alt}; border: 1px solid {t.border}; border-radius: 12px; }}
 
+#AboutTitle {{ font-size: 15pt; font-weight: 600; }}
+#CreditCard {{ background: {t.surface_alt}; border: 1px solid {t.border}; border-left: 3px solid {t.accent};
+               border-radius: 10px; }}
+#CreditLabel {{ letter-spacing: 0.5px; }}
+#CreditName {{ font-size: 13pt; font-weight: 600; color: {t.text}; }}
+
 #DropZone {{ background: {t.surface_alt}; border: 2px dashed {t.accent}; border-radius: 12px; }}
 #DropZone[dragActive="true"] {{ background: {t.accent_soft}; }}
 

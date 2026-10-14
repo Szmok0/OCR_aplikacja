@@ -372,6 +372,8 @@ RESTORE_DEFAULTS = "Przywróć ustawienia domyślne"
 RESTORE_QUESTION = "Przywrócić wszystkie ustawienia do wartości domyślnych? Zmiany zostaną zapisane po kliknięciu OK."
 
 NO_NETWORK_STATEMENT = "Aplikacja nie wykonuje połączeń sieciowych."
+CREDIT_LABEL = "Pomysł i wykonanie"
+CREDIT_NAME = "Jacek J."
 LICENSES = "Licencje komponentów"
 LICENSES_MISSING = "Nie znaleziono pliku z licencjami dołączonego do aplikacji."
 ENGINE_BANNER = "Nie znaleziono silnika OCR (Tesseract) lub danych językowych. Rozpoznawanie tekstu nie zadziała — zainstaluj aplikację ponownie."

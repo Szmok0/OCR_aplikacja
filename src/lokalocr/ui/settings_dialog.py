@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QFileDialog,
     QFormLayout,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -317,8 +318,40 @@ class SettingsDialog(QDialog):
             layout.addWidget(_row(button))
 
     def _page_about(self, layout: QVBoxLayout) -> None:
-        layout.addWidget(_heading(f"{S.APP_NAME} {__version__}"))
-        layout.addWidget(QLabel(S.APP_SUBTITLE))
+        # Header: app icon, name and version, subtitle.
+        logo = QLabel()
+        logo.setPixmap(icons.app_icon().pixmap(QSize(56, 56)))
+        logo.setFixedSize(56, 56)
+        title = QLabel(f"{S.APP_NAME} {__version__}")
+        title.setObjectName("AboutTitle")
+        titles = QVBoxLayout()
+        titles.setSpacing(2)
+        titles.addStretch()
+        titles.addWidget(title)
+        titles.addWidget(muted_label(S.APP_SUBTITLE))
+        titles.addStretch()
+        header = QHBoxLayout()
+        header.setSpacing(14)
+        header.addWidget(logo)
+        header.addLayout(titles, 1)
+        layout.addLayout(header)
+        layout.addSpacing(6)
+
+        # Credit card: who came up with the idea and made the application.
+        credit = QFrame()
+        credit.setObjectName("CreditCard")
+        card = QVBoxLayout(credit)
+        card.setContentsMargins(16, 10, 16, 12)
+        card.setSpacing(2)
+        caption = muted_label(S.CREDIT_LABEL, small=True)
+        caption.setObjectName("CreditLabel")
+        self.credit_name = QLabel(S.CREDIT_NAME)
+        self.credit_name.setObjectName("CreditName")
+        card.addWidget(caption)
+        card.addWidget(self.credit_name)
+        layout.addWidget(credit)
+        layout.addSpacing(6)
+
         offline = QLabel(S.NO_NETWORK_STATEMENT)
         offline.setProperty("heading", True)
         layout.addWidget(offline)
