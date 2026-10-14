@@ -2,6 +2,7 @@
 
 > Nazwa robocza: **LokalOCR**. Aplikacja desktopowa do OCR i konwersji dokumentów, działająca **wyłącznie offline**.
 > Ten plik jest jednocześnie specyfikacją (funkcje, architektura, UI) i zbiorem zasad dla agenta (Claude Code). Czytaj go w całości przed każdą większą zmianą.
+> **Decyzja właściciela (14.10.2026): tryb pełny (Docling) usunięty z aplikacji i repozytorium — zostaje tylko tryb podstawowy.** Pakiet z modelami był za duży (ok. 2 GB po instalacji) i niestabilny na docelowych laptopach. Obrazy (np. zdjęcie z CV) użytkownik wycina ręcznie narzędziem „Zaznacz obszar” w podglądzie. Opisy trybu pełnego, karty *Obrazy*, okna *Struktura dokumentu*, opcji „Tryb pracy” i „Zachowaj strukturę” w §3, §5, §7 i §10 są historyczne — nie wracaj do nich bez wyraźnej prośby właściciela.
 > Referencja wizualna UI: `docs/ui-reference/ui-reference-v1.png` (patrz §7.1). Jeśli pliku nie ma w repozytorium, poproś właściciela o dodanie go przed etapem 3.
 
 ---
@@ -108,6 +109,8 @@ Jeśli któraś propozycja okaże się nieprzydatna (instalacja, licencja, jako�
 ---
 
 ## 5. Tryby pracy
+
+> Tryb pełny usunięty 14.10.2026 (patrz nota na początku pliku). Poniższy opis trybu pełnego jest historyczny.
 
 ### Tryb podstawowy (zawsze dostępny)
 - Loader → preprocess → Tesseract (pol+eng) → bloki `paragraph` z liniami.
@@ -372,7 +375,7 @@ Pracujemy w chmurowym środowisku Claude Code z podpiętym repozytorium właści
 **Etap 5 — Ustawienia, motywy, dopracowanie.** Okno ustawień (wszystkie kategorie), motywy jasny/ciemny z tokenów (§7.7), ikony SVG (§7.8), stany błędów (§7.6), skróty i dostępność (§7.9), lokalna pomoc i „O programie".
 *Akceptacja:* przegląd zrzutów ekranu przez właściciela względem referencji, kontrast AA.
 
-**Etap 6 — Tryb pełny.** `docling_engine` z lokalnymi modelami, mapowanie do `DocumentModel`, DOCX ze strukturą (style nagłówków, tabele, obrazy), folder `obrazy/`, pełny Markdown/HTML, karta *Obrazy*, okno *Struktura dokumentu* (tylko do odczytu). Włącz generowanie obrazów obiektów w Docling. Jeśli bieżąca wersja ma natywny eksport DOCX, porównaj jakość z własnym eksporterem i wybierz lepszy.
+**Etap 6 — Tryb pełny** *(zrealizowany, a następnie usunięty decyzją właściciela 14.10.2026)*. `docling_engine` z lokalnymi modelami, mapowanie do `DocumentModel`, DOCX ze strukturą (style nagłówków, tabele, obrazy), folder `obrazy/`, pełny Markdown/HTML, karta *Obrazy*, okno *Struktura dokumentu* (tylko do odczytu). Włącz generowanie obrazów obiektów w Docling. Jeśli bieżąca wersja ma natywny eksport DOCX, porównaj jakość z własnym eksporterem i wybierz lepszy.
 *Akceptacja:* dokument z tabelą, listą i obrazem → DOCX z odpowiednimi elementami; działa przy aktywnym `netguard`.
 
 **Etap 7 — Pakowanie i dokumentacja.** PyInstaller (one-folder) z dołączonym Tesseractem, danymi `pol`/`eng` i folderem `models/`, instrukcja instalacji offline, `docs/offline-checklist.md`, `docs/user-guide.md`. Pakiety PyInstaller bywają oznaczane przez antywirusy (fałszywe alarmy); podpisanie kodu jest opcjonalne i nie jest wymagane do użytku osobistego.
@@ -427,6 +430,7 @@ Każde rozszerzenie zaczyna się od krótkiej notatki w `docs/` (cel, ryzyko, li
 - System docelowy: **Windows**, głównie laptopy biurowe bez GPU; rzadziej desktop z dedykowaną kartą graficzną (§2).
 - Repozytorium: **GitHub** (`Szmok0/OCR_aplikacja`). CI: **GitHub Actions** (Windows + Linux). Te same sprawdzenia lokalnie: `python scripts/check.py`.
 - Ikona aplikacji: wystarczy **zastępczy projekt** przygotowany przez agenta (§7.8).
+- Tryb pełny (Docling): **usunięty** (14.10.2026); aplikacja ma tylko tryb podstawowy, a pakiet Windows tylko wariant `basic`.
 
 **Do sprawdzenia w bieżącej dokumentacji przez agenta (nie zakładaj):**
 - Docling: praca offline z lokalnymi modelami, wybór Tesseracta jako silnika OCR, dostępność natywnego eksportu DOCX w bieżącej wersji.

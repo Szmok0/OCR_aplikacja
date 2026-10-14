@@ -1,4 +1,4 @@
-"""Command-line interface (stage 2): ``lokalocr plik -o wynik --mode basic --lang pol+eng``.
+"""Command-line interface (stage 2): ``lokalocr plik -o wynik --lang pol+eng``.
 
 Messages are Polish (§0.8) and go to stderr; recognised text goes only to the
 output files (or stdout with ``-o -``). The network guard is installed before
@@ -13,7 +13,6 @@ netguard.install()
 
 import argparse  # noqa: E402
 import logging  # noqa: E402
-import multiprocessing  # noqa: E402
 import sys  # noqa: E402
 import threading  # noqa: E402
 from collections.abc import Sequence  # noqa: E402
@@ -22,7 +21,6 @@ from enum import IntEnum  # noqa: E402
 from pathlib import Path  # noqa: E402
 
 from lokalocr import __version__  # noqa: E402
-from lokalocr.config import Settings  # noqa: E402
 from lokalocr.errors import ErrorCode, LokalOcrError  # noqa: E402
 from lokalocr.exporters.common import default_output_name  # noqa: E402
 from lokalocr.exporters.docx import export_docx  # noqa: E402
@@ -38,7 +36,6 @@ from lokalocr.pipeline import (  # noqa: E402
     Pipeline,
     ProcessOptions,
     ProgressEvent,
-    process_full,
 )
 from lokalocr.preprocess import PreprocessOptions  # noqa: E402
 from lokalocr.textview import TextLayout  # noqa: E402
@@ -139,12 +136,6 @@ def _build_parser() -> argparse.ArgumentParser:
         "(standardowe wyjście); domyślnie obok pliku źródłowego",
     )
     parser.add_argument(
-        "--mode",
-        choices=("basic", "full"),
-        default="basic",
-        help="tryb pracy: basic = podstawowy, full = pełny (domyślnie basic)",
-    )
-    parser.add_argument(
         "--lang", choices=LANGUAGES, default="pol+eng", help="język OCR (domyślnie pol+eng)"
     )
     parser.add_argument(
@@ -183,22 +174,12 @@ def _say(message: str, *, quiet: bool = False) -> None:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    multiprocessing.freeze_support()  # full mode spawns a child process
     parser = _build_parser()
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
 
     if not 72 <= args.dpi <= 1200:
         parser.error("--dpi musi mieścić się w zakresie 72–1200")
-    structure = None
-    if args.mode == "full":
-        from lokalocr.engines.docling_engine import DoclingEngine
-
-        structure = DoclingEngine(threads=Settings().worker_count())
-        if not structure.is_available():
-            _say(error_message(ErrorCode.FULL_MODE_UNAVAILABLE))
-            return ExitCode.USAGE
-
     files, problems = _collect_inputs(args.inputs, args.recursive)
     for problem in problems:
         _say(problem)
@@ -222,7 +203,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     pipeline = Pipeline(engine)
     options = ProcessOptions(
         lang=args.lang,
-        mode=args.mode,
         pdf_dpi=args.dpi,
         preprocess=PreprocessOptions(enabled=not args.no_preprocess),
     )
@@ -259,14 +239,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 )
                 _say(f"{prefix}: zapisano {job.target}", quiet=args.quiet)
                 continue
-            if structure is not None:
-                document = process_full(
-                    structure, job.source, options, on_progress=progress, cancel=cancel
-                )
-            else:
-                document = pipeline.process(
-                    job.source, options, on_progress=progress, cancel=cancel
-                )
+            document = pipeline.process(job.source, options, on_progress=progress, cancel=cancel)
             if job.target is None:
                 sys.stdout.write(_render(document, args.fmt, args.layout, job.source.stem))
                 sys.stdout.flush()

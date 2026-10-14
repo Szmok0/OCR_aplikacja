@@ -5,7 +5,7 @@ Walks the installed dependency closure of the ``lokalocr`` distribution
 license outside the allowlist. LGPL is accepted only for the dynamically
 linked Qt bindings listed in ``LGPL_ALLOWED``.
 
-Usage: ``python scripts/check_licenses.py [--extras full]``
+Usage: ``python scripts/check_licenses.py [--extras NAME ...]``
 """
 
 from __future__ import annotations
@@ -249,7 +249,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Check runtime dependency licences.")
     parser.add_argument(
         "--extras", nargs="*", default=[],
-        help="also check these optional extras of lokalocr (e.g. full)",
+        help="also check these optional extras of lokalocr (e.g. dev)",
     )  # fmt: skip
     args = parser.parse_args(argv)
     try:

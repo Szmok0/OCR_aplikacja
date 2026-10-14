@@ -12,9 +12,8 @@ ERROR_MESSAGES: dict[ErrorCode, str] = {
     ErrorCode.PASSWORD_PROTECTED: "Plik jest chroniony hasłem. Usuń zabezpieczenie i spróbuj ponownie.",
     ErrorCode.CORRUPT_FILE: "Nie udało się otworzyć pliku. Może być uszkodzony.",
     ErrorCode.UNSUPPORTED_FORMAT: "Ten format nie jest obsługiwany. Użyj PDF, PNG, JPG lub TIFF.",
-    ErrorCode.FULL_MODE_UNAVAILABLE: "Tryb pełny jest niedostępny: brak lokalnych modeli. Użyj trybu podstawowego.",
     ErrorCode.LANGUAGE_DATA_MISSING: "Brak danych językowych dla wybranego języka.",
-    ErrorCode.ENGINE_MISSING: "Nie znaleziono silnika OCR (Tesseract). Zainstaluj go lub użyj pełnej wersji aplikacji.",
+    ErrorCode.ENGINE_MISSING: "Nie znaleziono silnika OCR (Tesseract). Zainstaluj go lub użyj pakietu aplikacji z dołączonym silnikiem.",
     ErrorCode.TOO_LARGE: "Plik jest zbyt duży do przetworzenia. Spróbuj niższej rozdzielczości.",
     ErrorCode.EMPTY_RESULT: "Nie znaleziono tekstu. Sprawdź jakość skanu lub język OCR.",
     ErrorCode.CANCELLED: "Przetwarzanie anulowane.",
@@ -98,17 +97,6 @@ MENU_REMOVE = "Usuń z kolejki"
 
 QUICK_SETTINGS = "Ustawienia szybkiego przetwarzania"
 OCR_LANGUAGE = "Język OCR"
-WORK_MODE = "Tryb pracy"
-MODE_BASIC = "Podstawowy"
-MODE_FULL = "Pełny"
-MODE_BASIC_TIP = "Czysty tekst. Działa na każdym komputerze."
-MODE_FULL_TIP = (
-    "Odtwarza strukturę dokumentu (nagłówki, listy, tabele, obrazy) i zapisuje "
-    "edytowalny DOCX. To czysty dokument do dalszej pracy, a nie kopia wyglądu strony 1:1."
-)
-MODE_FULL_UNAVAILABLE = (
-    "Tryb pełny jest niedostępny: brak lokalnych modeli. Użyj trybu podstawowego."
-)
 AUTO_PREPROCESS = "Automatyczna obróbka obrazu"
 AUTO_PREPROCESS_TIP = "Prostowanie, usuwanie szumów i poprawa kontrastu przed rozpoznaniem tekstu"
 
@@ -165,15 +153,12 @@ def page_of(page: int, total: int) -> str:
     return f"(strona {page} z {total})"
 
 
-def status_line(
-    pages: int, words: int, lang: str, confidence: float | None, mode: str = "basic"
-) -> str:
+def status_line(pages: int, words: int, lang: str, confidence: float | None) -> str:
     conf = f"{round(confidence * 100)}%" if confidence is not None else "—"
     page_word = "Strona 1 z 1" if pages == 1 else f"Stron: {pages}"
     words_word = plural_pl(words, "słowo", "słowa", "słów")
-    mode_name = MODE_FULL if mode == "full" else MODE_BASIC
     return (
-        f"{page_word} • Znaleziono {words} {words_word} • Tryb: {mode_name.lower()} • "
+        f"{page_word} • Znaleziono {words} {words_word} • "
         f"Język OCR: {LANGUAGE_NAMES.get(lang, lang)} • Pewność OCR: {conf}"
     )
 
@@ -182,19 +167,6 @@ ALREADY_IN_QUEUE = "Ten plik jest już w kolejce — pokazuję jego wynik."
 REPROCESSING_WITH_NEW_SETTINGS = (
     "Plik jest już w kolejce — przetwarzam go ponownie z nowymi ustawieniami."
 )
-
-
-def mode_differs(item_mode: str) -> str:
-    done = "pełnym" if item_mode == "full" else "podstawowym"
-    return f"Ten plik przetworzono w trybie {done}."
-
-
-def reprocess_in_mode(mode: str) -> str:
-    return "Przetwórz w trybie pełnym" if mode == "full" else "Przetwórz w trybie podstawowym"
-
-
-def images_found(n: int) -> str:
-    return f"Wykryto {n} {plural_pl(n, 'obraz', 'obrazy', 'obrazów')} — zobacz kartę „Obrazy”."
 
 
 def search_hits(current: int, total: int) -> str:
@@ -213,7 +185,6 @@ SHORT_ERRORS: dict[ErrorCode, str] = {
     ErrorCode.ENGINE_MISSING: "Błąd: brak silnika OCR",
     ErrorCode.TOO_LARGE: "Błąd: plik zbyt duży",
     ErrorCode.EMPTY_RESULT: "Nie znaleziono tekstu",
-    ErrorCode.FULL_MODE_UNAVAILABLE: "Błąd: tryb pełny niedostępny",
     ErrorCode.INTERNAL: "Błąd przetwarzania",
 }
 
@@ -253,11 +224,6 @@ TAB_TEXT = "Tekst"
 TAB_PREVIEW = "Podgląd"
 TAB_TEXT_TIP = "Podgląd oryginału obok rozpoznanego tekstu"
 TAB_PREVIEW_TIP = "Podgląd strony na całą szerokość z ramkami rozpoznanych bloków"
-TAB_IMAGES_TIP = "Obrazy wyciągnięte z dokumentu (tryb pełny)"
-STRUCTURE = "Struktura"
-STRUCTURE_TIP = "Struktura dokumentu: nagłówki, akapity, listy, tabele i obrazy"
-STRUCTURE_UNAVAILABLE = "Struktura dokumentu jest dostępna w trybie pełnym."
-IMAGES_UNAVAILABLE = "Obrazy są wyciągane w trybie pełnym."
 
 FORMAT_LABELS: dict[str, str] = {
     "docx": "DOCX",
@@ -281,15 +247,6 @@ FORMAT_TIPS: dict[str, str] = {
     "html": "Strona HTML do otwarcia w przeglądarce (bez zasobów z internetu)",
 }
 SAVE_AS_MENU = "Zapisz jako"
-OPEN_IMAGES_TIP = "Otwórz folder z obrazami wyciągniętymi z dokumentu"
-OUTPUT_OPTIONS = "Opcje wyniku (dla tego dokumentu)"
-CLEAN_TEXT_ALWAYS = "Czysty tekst (zawsze)"
-CLEAN_TEXT_TIP = "Rozpoznany tekst jest zawsze częścią wyniku."
-KEEP_STRUCTURE = "Zachowaj strukturę (tryb pełny)"
-KEEP_STRUCTURE_TIP = (
-    "W trybie pełnym DOCX, Markdown i HTML zawierają nagłówki, listy, tabele i obrazy. "
-    "Po wyłączeniu zapisywany jest czysty tekst w akapitach."
-)
 EXPORTING_TITLE = "Trwa zapisywanie…"
 EXPORT_CANCELLED = "Zapis przerwany."
 EXPORT_BUSY = "Trwa zapisywanie innego pliku. Poczekaj na jego zakończenie."
@@ -297,14 +254,6 @@ EXPORT_BUSY = "Trwa zapisywanie innego pliku. Poczekaj na jego zakończenie."
 
 def save_as(fmt: str) -> str:
     return f"Zapisz jako {FORMAT_LABELS[fmt].split(' ')[0]}"
-
-
-def tab_images(n: int) -> str:
-    return f"Obrazy ({n})"
-
-
-def open_images(n: int) -> str:
-    return f"Otwórz folder z obrazami ({n})"
 
 
 # --- settings, help, about (stage 5) ---------------------------------------------
@@ -323,12 +272,8 @@ SETTINGS_CATEGORIES: dict[str, str] = {
 }
 SETTINGS_OCR_TITLE = "Ustawienia OCR"
 DEFAULT_LANGUAGE = "Język OCR (domyślny)"
-DEFAULT_MODE = "Tryb pracy (domyślny)"
 COMPONENT_STATUS = "Stan komponentów"
-FULL_MODE_MODELS = "Modele trybu pełnego"
 LANGUAGE_DATA = "Silnik i dane językowe"
-MODELS_INSTALLED = "zainstalowane"
-MODELS_MISSING = "brak — tryb pełny jest niedostępny"
 CHECKING = "Sprawdzanie…"
 ENGINE_NOT_FOUND = "Nie znaleziono silnika OCR (Tesseract)."
 
@@ -410,8 +355,8 @@ def missing_languages(langs: str) -> str:
     return f"Brak danych dla: {langs}"
 
 
-def about_components(engine: str, models: str) -> str:
-    return f"Silnik OCR: {engine}\nModele trybu pełnego: {models}"
+def about_components(engine: str) -> str:
+    return f"Silnik OCR: {engine}"
 
 
 def overwrite_question(name: str) -> str:
@@ -420,51 +365,3 @@ def overwrite_question(name: str) -> str:
 
 def minutes(n: int) -> str:
     return f"{n} min"
-
-
-# --- full mode: structure window, images (stage 6) ---------------------------------
-
-STRUCTURE_TREE = "Drzewo struktury dokumentu"
-BLOCK_PREVIEW = "Podgląd bloku"
-BLOCK_PROPERTIES = "Właściwości bloku"
-READ_ONLY_NOTE = "Tylko do odczytu"
-SELECT_BLOCK = "Wybierz element w drzewie, aby zobaczyć jego podgląd."
-NO_BLOCK_PREVIEW = "Brak podglądu dla tego elementu."
-BLOCK_TYPE = "Typ"
-BLOCK_TEXT = "Tekst"
-BLOCK_LEVEL = "Poziom"
-BLOCK_COORDS = "Współrzędne"
-SHOW_BLOCK_FRAME = "Pokaż ramkę bloku w podglądzie"
-CONFIDENCE = "Pewność rozpoznania"
-BLOCK_TYPE_LABELS: dict[str, str] = {
-    "heading": "Nagłówek",
-    "paragraph": "Akapit",
-    "list_item": "Element listy",
-    "table": "Tabela",
-    "figure": "Obraz",
-    "caption": "Podpis",
-}
-GROUP_LABELS: dict[str, str] = {"paragraph": "Akapit", "list_item": "Lista"}
-IMAGES_EMPTY = "Ten dokument nie zawiera obrazów."
-CHOOSE_IMAGES_FOLDER = "Wybierz folder, do którego zapisać obrazy"
-FULL_MODE_SLOW_NOTE = "Tryb pełny analizuje układ strony i trwa dłużej niż tryb podstawowy."
-
-
-def structure_title(name: str) -> str:
-    return f"Struktura dokumentu – {name}"
-
-
-def section_label(title: str) -> str:
-    return f"Sekcja: {title}"
-
-
-def page_label(number: int) -> str:
-    return f"Strona {number}"
-
-
-def coords(x: int, y: int, w: int, h: int) -> str:
-    return f"X: {x}   Y: {y}   Szer.: {w}   Wys.: {h}"
-
-
-def images_saved(n: int) -> str:
-    return f"Zapisano obrazy: {n}"

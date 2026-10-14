@@ -10,12 +10,13 @@ from lokalocr import netguard
 
 netguard.install()
 
-import multiprocessing  # noqa: E402
+import gc  # noqa: E402
+import itertools  # noqa: E402
 import sys  # noqa: E402
 from collections.abc import Sequence  # noqa: E402
 from pathlib import Path  # noqa: E402
 
-from PySide6.QtCore import Qt  # noqa: E402
+from PySide6.QtCore import QObject, Qt, QTimer  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
 from lokalocr import __version__, config, logsetup, tempdir  # noqa: E402
@@ -32,6 +33,34 @@ def _engine() -> OcrEngine:
     return TesseractEngine()
 
 
+GC_INTERVAL_MS = 500
+GC_FULL_EVERY = 20  # ticks: a full collection about every 10 s
+_gc_ticks = itertools.count(1)
+
+
+def _collect_garbage() -> None:
+    # Young objects on every tick (cheap), everything now and then. Does not rely
+    # on gc.get_count(), whose meaning differs between Python versions.
+    gc.collect(2 if next(_gc_ticks) % GC_FULL_EVERY == 0 else 0)
+
+
+def _collect_garbage_in_gui_thread(app: QObject) -> None:
+    """Run Python's cyclic garbage collector only in the GUI thread.
+
+    Automatic collection runs in whichever thread happens to allocate. When it
+    frees a Qt object from a worker thread (OCR, preview rendering), Qt crashes
+    (access violation on Windows). A timer collects in the GUI thread instead.
+    """
+    if app.findChild(QTimer, "gcTimer") is not None:
+        return
+    gc.disable()
+    timer = QTimer(app)
+    timer.setObjectName("gcTimer")
+    timer.setInterval(GC_INTERVAL_MS)
+    timer.timeout.connect(_collect_garbage)
+    timer.start()
+
+
 def create_app(argv: Sequence[str] | None = None, settings: Settings | None = None) -> QApplication:
     app = QApplication.instance()
     if not isinstance(app, QApplication):
@@ -44,35 +73,25 @@ def create_app(argv: Sequence[str] | None = None, settings: Settings | None = No
     app.setApplicationVersion(__version__)
     app.setOrganizationName("LokalOCR")
     app.setWindowIcon(icons.app_icon())
+    _collect_garbage_in_gui_thread(app)
     s = settings or Settings()
     theme.apply(app, s.theme, s.font_size or None)
     return app
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    # Full mode runs Docling in a spawned child process; needed for frozen builds.
-    multiprocessing.freeze_support()
     args = list(sys.argv[1:] if argv is None else argv)
     if args[:1] == ["--selftest"]:
         from lokalocr.selftest import run
 
         create_app(["lokalocr", "-platform", "offscreen"])
-        rest = [a for a in args[1:] if a != "--full"]
-        return run(Path(rest[0]) if rest else None, full="--full" in args)
+        return run(Path(args[1]) if len(args) > 1 else None)
     settings = config.load()
     logsetup.configure(settings.log_level)
     tempdir.set_root(Path(settings.temp_dir) if settings.temp_dir else None)
     tempdir.cleanup()  # leftovers from a previous crash
     app = create_app(argv, settings)
-    from lokalocr.engines.docling_engine import DoclingEngine, is_available
-
-    window = MainWindow(
-        _engine,
-        full_mode_available=is_available(),
-        settings=settings,
-        persist_settings=True,
-        structure_factory=lambda workers: DoclingEngine(threads=workers),
-    )
+    window = MainWindow(_engine, settings=settings, persist_settings=True)
     window.show()
     window.check_engine()
     try:

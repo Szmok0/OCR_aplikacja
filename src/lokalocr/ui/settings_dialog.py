@@ -11,7 +11,6 @@ from PySide6.QtCore import QSize, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QButtonGroup,
-    QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -95,7 +94,6 @@ class SettingsDialog(QDialog):
         settings: Settings,
         *,
         engine_info: Callable[[], tuple[str, frozenset[str]] | None] | None = None,
-        full_mode_available: bool = False,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -105,7 +103,6 @@ class SettingsDialog(QDialog):
         self._initial = settings
         self.result_settings = settings
         self._engine_info = engine_info
-        self._full_available = full_mode_available
 
         root = QVBoxLayout(self)
         body = QHBoxLayout()
@@ -156,26 +153,12 @@ class SettingsDialog(QDialog):
         for code in config.LANGUAGES:
             self.lang_combo.addItem(S.LANGUAGE_LABELS[code], code)
         form.addRow(S.DEFAULT_LANGUAGE, self.lang_combo)
-        self.mode_basic = QRadioButton(S.MODE_BASIC)
-        self.mode_full = QRadioButton(S.MODE_FULL)
-        group = QButtonGroup(self)
-        group.addButton(self.mode_basic)
-        group.addButton(self.mode_full)
-        if not self._full_available:
-            self.mode_full.setEnabled(False)
-            self.mode_full.setToolTip(S.MODE_FULL_UNAVAILABLE)
-        form.addRow(S.DEFAULT_MODE, _row(self.mode_basic, self.mode_full))
         layout.addLayout(form)
         layout.addSpacing(12)
         layout.addWidget(_heading(S.COMPONENT_STATUS))
-        self.models_status = QLabel(
-            S.MODELS_INSTALLED if self._full_available else S.MODELS_MISSING
-        )
-        self.models_status.setWordWrap(True)
         self.lang_status = QLabel(S.CHECKING)
         self.lang_status.setWordWrap(True)
         status = QFormLayout()
-        status.addRow(S.FULL_MODE_MODELS, self.models_status)
         status.addRow(S.LANGUAGE_DATA, self.lang_status)
         layout.addLayout(status)
         self._fill_engine_status()
@@ -248,9 +231,6 @@ class SettingsDialog(QDialog):
         for fmt in ("docx", "txt", "pdf", "md", "html"):
             self.format_combo.addItem(S.FORMAT_LABELS[fmt], fmt)
         form.addRow(S.DEFAULT_FORMAT, self.format_combo)
-        self.structure_cb = QCheckBox(S.KEEP_STRUCTURE)
-        self.structure_cb.setToolTip(S.KEEP_STRUCTURE_TIP)
-        form.addRow("", self.structure_cb)
         self.temp_edit = QLineEdit()
         self.temp_edit.setReadOnly(True)
         self.temp_edit.setPlaceholderText(str(tempdir.default_root()))
@@ -360,8 +340,7 @@ class SettingsDialog(QDialog):
         layout.addWidget(self.about_engine)
         info = self._engine_info() if self._engine_info else None
         engine = info[0] if info else S.ENGINE_NOT_FOUND
-        models = S.MODELS_INSTALLED if self._full_available else S.MODELS_MISSING
-        self.about_engine.setText(S.about_components(engine, models))
+        self.about_engine.setText(S.about_components(engine))
         layout.addWidget(_heading(S.LICENSES))
         browser = QTextBrowser()
         browser.setOpenLinks(False)
@@ -416,9 +395,6 @@ class SettingsDialog(QDialog):
 
     def load(self, s: Settings) -> None:
         self.lang_combo.setCurrentIndex(max(0, self.lang_combo.findData(s.default_lang)))
-        (
-            self.mode_full if s.default_mode == "full" and self._full_available else self.mode_basic
-        ).setChecked(True)
         self.auto_toggle.setChecked(s.auto_preprocess)
         self.deskew_toggle.setChecked(s.deskew)
         self.denoise_toggle.setChecked(s.denoise)
@@ -432,7 +408,6 @@ class SettingsDialog(QDialog):
         self._sync_output_enabled()
         self.pattern_edit.setText(s.name_pattern)
         self.format_combo.setCurrentIndex(max(0, self.format_combo.findData(s.default_format)))
-        self.structure_cb.setChecked(s.keep_structure)
         self.temp_edit.setText(s.temp_dir)
         _select(self.clipboard_combo, s.clipboard_clear_minutes)
         self.theme_radios.get(s.theme, self.theme_radios["system"]).setChecked(True)
@@ -445,7 +420,6 @@ class SettingsDialog(QDialog):
         return replace(
             self._initial,
             default_lang=str(self.lang_combo.currentData()),
-            default_mode="full" if self.mode_full.isChecked() else "basic",
             auto_preprocess=self.auto_toggle.isChecked(),
             deskew=self.deskew_toggle.isChecked(),
             denoise=self.denoise_toggle.isChecked(),
@@ -455,7 +429,6 @@ class SettingsDialog(QDialog):
             output_dir=self.output_edit.text() if self.folder_radio.isChecked() else "",
             name_pattern=pattern,
             default_format=self.format_combo.currentData(),
-            keep_structure=self.structure_cb.isChecked(),
             temp_dir=self.temp_edit.text(),
             clipboard_clear_minutes=int(self.clipboard_combo.currentData()),
             theme=theme,  # type: ignore[arg-type]
