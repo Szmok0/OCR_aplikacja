@@ -15,8 +15,9 @@ LokalOCR rozpoznaje tekst w skanach i zdjęciach dokumentów i zapisuje go jako 
 - **Karty** nad podglądem:
   - *Tekst* — podgląd oryginału obok rozpoznanego tekstu,
   - *Podgląd* — strona na całą szerokość z ramkami rozpoznanych fragmentów,
-  - *Obrazy* — obrazy wyciągnięte z dokumentu (tryb pełny).
+  - *Obrazy* — obrazy wyciągnięte z dokumentu automatycznie (tryb pełny); w trybie podstawowym zdjęcie wytniesz ręcznie narzędziem **Zaznacz obszar**.
 - **Podgląd strony** — przewijanie stron (PgUp/PgDn), powiększanie (Ctrl+kółko myszy, gest szczypania), dopasowanie do okna, rączka do przesuwania, lupa (kliknięcie powiększa, prawy przycisk pomniejsza), obrót i **prostowanie** krzywo zeskanowanej strony.
+- **Wycinanie fragmentu strony** (np. zdjęcia z CV) — włącz narzędzie **Zaznacz obszar** (ikona kadrowania na pasku podglądu) i przeciągnij myszą prostokąt na stronie. Po puszczeniu przycisku pojawi się menu: *Kopiuj zaznaczenie jako obraz* (do wklejenia np. w Word) albo *Zapisz zaznaczenie jako obraz…* (PNG lub JPG). Fragment jest wycinany w pełnej rozdzielczości (strony PDF w 300 dpi), a nie z podglądu. Menu otworzysz ponownie prawym przyciskiem na zaznaczeniu; Esc usuwa zaznaczenie. Działa w obu trybach pracy.
 - **Wynik tekstowy** (prawa kolumna):
   - *Oryginalny układ* zachowuje podział na linie i przybliżone położenie tekstu,
   - *Tekst uproszczony* łączy linie w akapity — wygodny do dalszej edycji,
