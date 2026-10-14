@@ -14,7 +14,8 @@ pytest.importorskip("PySide6")
 
 from PIL import Image
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox
+from PySide6.QtGui import QAction
+from PySide6.QtWidgets import QApplication, QFileDialog, QMenu, QMessageBox
 from pytestqt.qtbot import QtBot
 
 from lokalocr import tempdir
@@ -352,6 +353,23 @@ def _drag_select(
     QTest.mouseRelease(viewport, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, end)
 
 
+def _selection_menu(window: MainWindow) -> QMenu:
+    """The action menu shown after a selection (opened again as on right-click)."""
+    preview = window.preview
+    for old in preview.findChildren(QMenu):
+        old.close()
+        old.deleteLater()
+    QApplication.processEvents()
+    preview.view.selection_finished.emit(preview.view.mapToGlobal(preview.view.rect().center()))
+    menus = [m for m in preview.findChildren(QMenu) if m.isVisible()]
+    assert len(menus) == 1
+    return menus[0]
+
+
+def _menu_action(menu: QMenu, text: str) -> QAction:
+    return next(a for a in menu.actions() if a.text() == text)
+
+
 def test_select_area_copy_and_save(
     qtbot: QtBot,
     files: Path,
@@ -379,6 +397,10 @@ def test_select_area_copy_and_save(
     rect = preview.view.selection_rect()
     assert rect is not None
     assert rect.width() == pytest.approx(0.5 * bounds.width(), rel=0.05)
+    # The window refreshes the selected item on queue updates; that must not
+    # drop the selection the user has just made.
+    window._refresh_selected()
+    assert preview.view.selection_rect() == rect
 
     # The cut is taken from the full-resolution page, not from the preview.
     with Image.open(files / "cv.png") as original:
@@ -388,12 +410,15 @@ def test_select_area_copy_and_save(
     assert image.width() == pytest.approx(0.5 * full_w, rel=0.05)
     assert image.height() == pytest.approx(0.2 * full_h, rel=0.05)
 
-    window.copy_selection()
+    # Use the menu that pops up after the drag, as the user does.
+    menu = _selection_menu(window)
+    QApplication.clipboard().clear()
+    _menu_action(menu, S.SELECTION_COPY).trigger()
     assert QApplication.clipboard().image().width() == image.width()
 
     out = tmp_path_factory.mktemp("cut")
     _save_to(monkeypatch, out / "zdjecie")
-    window.save_selection()
+    _menu_action(_selection_menu(window), S.SELECTION_SAVE).trigger()
     with Image.open(out / "zdjecie.png") as saved:
         assert saved.size == (image.width(), image.height())
     _save_to(monkeypatch, out / "zdjecie.jpg")
