@@ -1,7 +1,9 @@
 name: Build Windows package
 
 # Prototype packages for the owner (stage 7): one-folder PyInstaller builds
-# with Tesseract (pol + eng) bundled, zipped and attached as artifacts.
+# with Tesseract (pol + eng) bundled, attached as artifacts. Builds of main are
+# also published as the "najnowsza" release, so the download link never changes:
+# https://github.com/Szmok0/OCR_aplikacja/releases/latest
 on:
   push:
     branches: [main]
@@ -129,3 +131,56 @@ jobs:
           name: LokalOCR-windows-${{ matrix.variant }}
           path: dist/LokalOCR
           retention-days: 30
+
+  release:
+    name: publish the download (Releases)
+    needs: build
+    # Only builds of main become the downloadable version. A failed (optional)
+    # full build still publishes the basic package.
+    if: ${{ !cancelled() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: LokalOCR-windows-*
+          path: artifacts
+
+      - name: Zip the packages (one LokalOCR folder per ZIP)
+        run: |
+          set -euo pipefail
+          test -d artifacts/LokalOCR-windows-basic || { echo "basic package missing"; exit 1; }
+          mkdir release
+          for dir in artifacts/LokalOCR-windows-*; do
+            name=$(basename "$dir")
+            mkdir stage
+            mv "$dir" stage/LokalOCR
+            (cd stage && zip -q -r "../release/$name.zip" LokalOCR)
+            rm -rf stage
+          done
+          ls -lh release
+
+      - name: Publish as the latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          cat > notes.md <<EOF
+          Najnowsza wersja LokalOCR dla Windows, zbudowana automatycznie z gałęzi main (commit ${GITHUB_SHA::7}, $(date -u +%Y-%m-%d)).
+
+          **Jak uruchomić**
+          1. Pobierz **LokalOCR-windows-basic.zip** poniżej (tryb podstawowy, ok. 200 MB). Wersja **full** (ok. 1 GB) dodaje tryb pełny: strukturę dokumentu, tabele i automatyczne wyciąganie obrazów.
+          2. Kliknij ZIP prawym przyciskiem → **Wyodrębnij wszystko…** (nie uruchamiaj programu z wnętrza ZIP-a).
+          3. W rozpakowanym folderze uruchom **LokalOCR.exe**. Jeśli Windows pokaże „System Windows ochronił komputer”, wybierz **Więcej informacji → Uruchom mimo to** (program nie jest podpisany cyfrowo).
+
+          Szczegóły: plik INSTRUKCJA.md w paczce. Aplikacja działa w pełni offline.
+          EOF
+          gh release delete najnowsza --cleanup-tag --yes || true
+          gh release create najnowsza release/*.zip \
+            --target "$GITHUB_SHA" \
+            --title "LokalOCR — najnowsza wersja (Windows)" \
+            --notes-file notes.md \
+            --latest

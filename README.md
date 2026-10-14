@@ -2,6 +2,10 @@
 
 Desktopowa aplikacja do OCR i konwersji dokumentów (PDF, PNG, JPG, TIFF → tekst, DOCX, PDF z warstwą tekstową, Markdown, HTML), działająca **wyłącznie offline**.
 
+## Pobierz (Windows)
+
+**[Pobierz najnowszą wersję](https://github.com/Szmok0/OCR_aplikacja/releases/latest)** — plik `LokalOCR-windows-basic.zip`: rozpakuj i uruchom `LokalOCR.exe`. Instrukcja: [`docs/install-windows.md`](docs/install-windows.md).
+
 - Specyfikacja i zasady pracy: [`CLAUDE.md`](CLAUDE.md)
 - Referencja UI: [`docs/ui-reference/ui-reference-v1.png`](docs/ui-reference/ui-reference-v1.png)
 - Środowisko deweloperskie: [`docs/dev-setup.md`](docs/dev-setup.md)
