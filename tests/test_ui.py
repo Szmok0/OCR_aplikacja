@@ -966,3 +966,17 @@ def test_full_mode_docx_has_structure(
     window.save("docx")
     plain = DocxDocument(str(out))
     assert not plain.tables and not plain.inline_shapes
+
+
+@pytest.mark.parametrize("name", ["light", "dark"])
+def test_toast_text_is_readable(qtbot: QtBot, name: theme.ThemeName) -> None:
+    window = make_window(qtbot, FakeEngine())
+    theme.apply(QApplication.instance(), name)  # type: ignore[arg-type]
+    window.toast.show_message("Zapisano plik.", "Pokaż w folderze")
+    label = window.toast.text
+    label.ensurePolished()
+    # The toast is dark-on-light inverted: its text must use the background colour.
+    colour = label.palette().color(label.foregroundRole())
+    expected = theme.color("bg")
+    theme.apply(QApplication.instance(), "light")  # type: ignore[arg-type]
+    assert colour == expected
