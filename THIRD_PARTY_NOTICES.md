@@ -23,19 +23,6 @@ Ikony Lucide skopiowano bez zmian kształtu, z nazwami zgodnymi z konwencją z `
 
 Lista sprawdzana automatycznie: `python scripts/check_licenses.py`.
 
-## Tryb pełny (pakiet „full”)
-
-| Komponent | Licencja | Uwagi |
-|---|---|---|
-| Docling 2.138 (docling, docling-core, docling-parse, docling-ibm-models) | MIT | analiza struktury dokumentu |
-| PyTorch, torchvision (CPU) | BSD-3-Clause (części: Apache-2.0, Apache-2.0 WITH LLVM-exception, BSL-1.0, MIT) | bez bibliotek CUDA |
-| transformers, huggingface-hub, safetensors | Apache-2.0 | |
-| pozostałe zależności trybu pełnego (~100 pakietów) | MIT / BSD / Apache-2.0 / MPL-2.0 / ISC / PSF / CNRI-Python | sprawdzane: `python scripts/check_licenses.py --extras full` |
-| Model układu strony `docling-project/docling-layout-heron` | Apache-2.0 | wagi w `models/docling` |
-| Model tabel TableFormer `docling-project/docling-models` | CDLA-Permissive-2.0 / Apache-2.0 | wagi w `models/docling` |
-
-Licencje modeli odczytuje `python scripts/model_licenses.py` (z kart modeli; tylko w środowisku deweloperskim).
-
 ## Programy zewnętrzne
 
 | Program | Licencja | Uwagi |

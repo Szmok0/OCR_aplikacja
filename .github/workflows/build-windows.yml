@@ -23,16 +23,11 @@ concurrency:
 
 jobs:
   build:
-    name: windows / ${{ matrix.variant }}
+    name: windows / basic
     runs-on: windows-latest
     timeout-minutes: 60
-    strategy:
-      fail-fast: false
-      matrix:
-        variant: [basic, full]
     env:
       PYTHONUTF8: "1"
-      LOKALOCR_BUILD_FULL: ${{ matrix.variant == 'full' && '1' || '0' }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -80,25 +75,7 @@ jobs:
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
-          if ($env:LOKALOCR_BUILD_FULL -eq "1") {
-            python -m pip install -e ".[full]" "pyinstaller==6.22.3"
-          } else {
-            python -m pip install -e . "pyinstaller==6.22.3"
-          }
-
-      - name: Cache models (full)
-        if: matrix.variant == 'full'
-        id: models-cache
-        uses: actions/cache@v5
-        with:
-          path: models
-          key: docling-models-2.138.0-${{ hashFiles('scripts/fetch_models.py') }}
-      - name: Download models (full)
-        if: matrix.variant == 'full' && steps.models-cache.outputs.cache-hit != 'true'
-        run: python scripts/fetch_models.py
-      - name: Verify models (full)
-        if: matrix.variant == 'full'
-        run: python scripts/fetch_models.py --verify
+          python -m pip install -e . "pyinstaller==6.22.3"
 
       - name: Build with PyInstaller
         run: pyinstaller packaging/lokalocr.spec --noconfirm --clean
@@ -110,10 +87,7 @@ jobs:
         run: |
           $env:PATH = "C:\Windows\System32;C:\Windows"   # no system Tesseract on PATH
           $report = Join-Path $env:RUNNER_TEMP "selftest.json"
-          # The full variant also runs full mode (Docling child process) on a CV page with a photo.
-          $selftestArgs = @("--selftest", "`"$report`"")
-          if ($env:LOKALOCR_BUILD_FULL -eq "1") { $selftestArgs += "--full" }
-          $p = Start-Process -FilePath "dist\LokalOCR\LokalOCR.exe" -ArgumentList $selftestArgs -Wait -PassThru
+          $p = Start-Process -FilePath "dist\LokalOCR\LokalOCR.exe" -ArgumentList @("--selftest", "`"$report`"") -Wait -PassThru
           Get-Content $report -Encoding utf8
           if ($p.ExitCode -ne 0) { throw "self-test failed with exit code $($p.ExitCode)" }
           & "dist\LokalOCR\lokalocr-cli.exe" --version
@@ -129,7 +103,7 @@ jobs:
 
       - uses: actions/upload-artifact@v6
         with:
-          name: LokalOCR-windows-${{ matrix.variant }}
+          name: LokalOCR-windows-basic
           path: dist/LokalOCR
           retention-days: 30
           # Ship exactly what passed the self-test (the default drops dot-files).
@@ -138,9 +112,8 @@ jobs:
   release:
     name: publish the download (Releases)
     needs: build
-    # Only builds of main become the downloadable version. If the full build
-    # fails, the basic package is still published (the check above stays red).
-    if: ${{ !cancelled() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+    # Only builds of main become the downloadable version.
+    if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -150,30 +123,6 @@ jobs:
         with:
           pattern: LokalOCR-windows-*
           path: artifacts
-
-      - name: Check the full package's models against their manifest
-        # The self-test runs before the upload; this checks what is published.
-        run: |
-          python3 - <<'PY'
-          import json, pathlib, sys
-          for root in sorted(pathlib.Path("artifacts").glob("LokalOCR-windows-*")):
-              folder = root / "_internal" / "models" / "docling"
-              manifest = folder / "MANIFEST.json"
-              if not manifest.is_file():
-                  if root.name.endswith("-full"):
-                      sys.exit(f"{root.name}: models/docling/MANIFEST.json is missing")
-                  continue
-              entries = json.loads(manifest.read_text(encoding="utf-8"))["files"]
-              bad = [
-                  e["path"] for e in entries
-                  if not any(part.startswith(".") for part in e["path"].split("/"))
-                  and (not (folder / e["path"]).is_file()
-                       or (folder / e["path"]).stat().st_size != e["size"])
-              ]
-              if bad:
-                  sys.exit(f"{root.name}: incomplete models: {bad[:5]}")
-              print(f"{root.name}: {len(entries)} model files listed, all present")
-          PY
 
       - name: Zip the packages (one LokalOCR folder per ZIP)
         run: |
@@ -199,7 +148,7 @@ jobs:
           Najnowsza wersja LokalOCR dla Windows, zbudowana automatycznie z gałęzi main (commit ${GITHUB_SHA::7}, $(date -u +%Y-%m-%d)).
 
           **Jak uruchomić**
-          1. Pobierz **LokalOCR-windows-basic.zip** poniżej (tryb podstawowy, ok. 200 MB). Wersja **full** (ok. 1 GB) dodaje tryb pełny: strukturę dokumentu, tabele i automatyczne wyciąganie obrazów.
+          1. Pobierz **LokalOCR-windows-basic.zip** poniżej (ok. 200 MB).
           2. Kliknij ZIP prawym przyciskiem → **Wyodrębnij wszystko…** (nie uruchamiaj programu z wnętrza ZIP-a).
           3. W rozpakowanym folderze uruchom **LokalOCR.exe**. Jeśli Windows pokaże „System Windows ochronił komputer”, wybierz **Więcej informacji → Uruchom mimo to** (program nie jest podpisany cyfrowo).
 

@@ -14,7 +14,6 @@ from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 from typing import Any, Literal
 
-from lokalocr.model import Mode
 from lokalocr.preprocess import PreprocessOptions
 
 __all__ = [
@@ -75,7 +74,6 @@ def config_path() -> Path:
 class Settings:
     # OCR
     default_lang: str = "pol+eng"
-    default_mode: Mode = "basic"
     # Processing
     auto_preprocess: bool = True
     deskew: bool = True
@@ -87,7 +85,6 @@ class Settings:
     output_dir: str = ""  # "" = ask every time
     name_pattern: str = "{nazwa}_ocr"
     default_format: OutputFormat = "docx"
-    keep_structure: bool = True
     temp_dir: str = ""  # "" = system default
     clipboard_clear_minutes: int = 0  # 0 = never
     # Appearance
@@ -124,8 +121,6 @@ class Settings:
         out = Settings(**asdict(self))
         if out.default_lang not in LANGUAGES:
             out.default_lang = default.default_lang
-        if out.default_mode not in ("basic", "full"):
-            out.default_mode = default.default_mode
         if out.pdf_dpi not in PDF_DPI_CHOICES:
             out.pdf_dpi = default.pdf_dpi
         if not 0 <= out.threads <= 64:

@@ -6,8 +6,7 @@ Ręczny test na komputerze docelowym (Windows). Zajmuje ok. 15 minut. Do testu u
 
 - [ ] Odłącz sieć (Wi-Fi wyłączone, kabel odłączony) i uruchom `LokalOCR.exe`.
 - [ ] Okno otwiera się bez komunikatów o błędach i bez okien powitalnych; w nagłówku widać „Offline — brak połączeń sieciowych”.
-- [ ] Przetwórz plik PNG, wielostronicowy PDF i TIFF w trybie podstawowym — wynik się pojawia.
-- [ ] (pakiet *full*) Przełącz na tryb „Pełny” i przetwórz fakturę lub CV — powstaje struktura, karta *Obrazy*, okno *Struktura*.
+- [ ] Przetwórz plik PNG, wielostronicowy PDF i TIFF — wynik się pojawia.
 - [ ] Zapisz wynik do DOCX, TXT, PDF (z tekstem), Markdown i HTML; otwórz pliki w Word/LibreOffice i przeglądarce. Tekst w PDF da się zaznaczyć i wyszukać (Ctrl+F w czytniku PDF).
 - [ ] `LokalOCR.exe --selftest raport.json` → w pliku `"ok": true`.
 
@@ -32,4 +31,4 @@ Ręczny test na komputerze docelowym (Windows). Zajmuje ok. 15 minut. Do testu u
 
 ## Wynik
 
-Data: ________  Wersja: ________  Pakiet: basic / full  Wynik: OK / uwagi: ______________________
+Data: ________  Wersja: ________  Wynik: OK / uwagi: ______________________

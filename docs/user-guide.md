@@ -11,35 +11,29 @@ LokalOCR rozpoznaje tekst w skanach i zdjęciach dokumentów i zapisuje go jako 
 ## Okno główne
 
 - **Kolejka plików** (lewa kolumna) — status każdego pliku: *Oczekuje*, *Przetwarzanie…*, *Gotowe* albo krótki opis błędu. Menu **⋯** przy pliku: *Pokaż wynik*, *Przetwórz ponownie*, *Usuń z kolejki*. **Wyczyść** usuwa wszystkie pliki z kolejki.
-- **Ustawienia szybkiego przetwarzania** — język dokumentu, tryb pracy i automatyczna obróbka obrazu. Zmiany dotyczą kolejnych plików; aby zastosować je do pliku już przetworzonego, wybierz *Przetwórz ponownie*.
+- **Ustawienia szybkiego przetwarzania** — język dokumentu i automatyczna obróbka obrazu. Zmiany dotyczą kolejnych plików; aby zastosować je do pliku już przetworzonego, wybierz *Przetwórz ponownie*.
 - **Karty** nad podglądem:
   - *Tekst* — podgląd oryginału obok rozpoznanego tekstu,
   - *Podgląd* — strona na całą szerokość z ramkami rozpoznanych fragmentów,
-  - *Obrazy* — obrazy wyciągnięte z dokumentu automatycznie (tryb pełny); w trybie podstawowym zdjęcie wytniesz ręcznie narzędziem **Zaznacz obszar**.
 - **Podgląd strony** — przewijanie stron (PgUp/PgDn), powiększanie (Ctrl+kółko myszy, gest szczypania), dopasowanie do okna, rączka do przesuwania, lupa (kliknięcie powiększa, prawy przycisk pomniejsza), obrót i **prostowanie** krzywo zeskanowanej strony.
-- **Wycinanie fragmentu strony** (np. zdjęcia z CV) — włącz narzędzie **Zaznacz obszar** (ikona kadrowania na pasku podglądu) i przeciągnij myszą prostokąt na stronie. Po puszczeniu przycisku pojawi się menu: *Kopiuj zaznaczenie jako obraz* (do wklejenia np. w Word) albo *Zapisz zaznaczenie jako obraz…* (PNG lub JPG). Fragment jest wycinany w pełnej rozdzielczości (strony PDF w 300 dpi), a nie z podglądu. Menu otworzysz ponownie prawym przyciskiem na zaznaczeniu; Esc usuwa zaznaczenie. Działa w obu trybach pracy.
+- **Wycinanie fragmentu strony** (np. zdjęcia z CV) — włącz narzędzie **Zaznacz obszar** (ikona kadrowania na pasku podglądu) i przeciągnij myszą prostokąt na stronie. Po puszczeniu przycisku pojawi się menu: *Kopiuj zaznaczenie jako obraz* (do wklejenia np. w Word) albo *Zapisz zaznaczenie jako obraz…* (PNG lub JPG). Fragment jest wycinany w pełnej rozdzielczości (strony PDF w 300 dpi), a nie z podglądu. Menu otworzysz ponownie prawym przyciskiem na zaznaczeniu; Esc usuwa zaznaczenie.
 - **Wynik tekstowy** (prawa kolumna):
   - *Oryginalny układ* zachowuje podział na linie i przybliżone położenie tekstu,
   - *Tekst uproszczony* łączy linie w akapity — wygodny do dalszej edycji,
   - **Szukaj w tekście…** (Ctrl+F) podświetla wszystkie trafienia; Enter przechodzi do następnego.
   - Pasek stanu pokazuje liczbę stron i słów, wybrany język oraz **pewność OCR** — średnią pewność silnika (im bliżej 100%, tym mniej błędów; poniżej ok. 80% warto sprawdzić tekst dokładniej).
 
-## Tryby pracy
-
-- **Podstawowy** — czysty tekst. Działa na każdym komputerze.
-- **Pełny** — dodatkowo odtwarza strukturę dokumentu (nagłówki, listy, tabele, obrazy) i zapisuje edytowalny DOCX. To **czysty dokument do dalszej pracy, a nie kopia wyglądu strony 1:1** — układ wielokolumnowy i dokładne położenie elementów mogą wymagać ręcznej poprawki. Tryb pełny wymaga dołączonych modeli; jeśli ich nie ma, opcja jest wyszarzona.
-
 ## Formaty zapisu
 
 | Format | Zawartość |
 |---|---|
-| **DOCX** | edytowalny dokument Word; w trybie pełnym z nagłówkami, listami, tabelami i obrazami |
+| **DOCX** | edytowalny dokument Word (akapity) — czysty dokument do dalszej pracy, a nie kopia wyglądu strony 1:1 |
 | **TXT** | czysty tekst (UTF-8) w widoku, który jest aktualnie wybrany |
 | **PDF (z tekstem)** | oryginalne strony z ukrytą warstwą tekstu — tekst można zaznaczać i wyszukiwać; zapis trwa chwilę, bo strony są rozpoznawane ponownie |
 | **Markdown** | tekst z prostym formatowaniem |
 | **HTML** | strona do otwarcia w przeglądarce, bez żadnych zasobów z internetu |
 
-Domyślna nazwa pliku to `<nazwa>_ocr.<rozszerzenie>`. Aplikacja **nigdy nie nadpisuje pliku bez pytania**. Opcja **Zachowaj strukturę (tryb pełny)** po wyłączeniu zapisuje czysty tekst w akapitach także w trybie pełnym.
+Domyślna nazwa pliku to `<nazwa>_ocr.<rozszerzenie>`. Aplikacja **nigdy nie nadpisuje pliku bez pytania**.
 
 ## Jak uzyskać lepszy wynik
 

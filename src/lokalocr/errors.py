@@ -14,7 +14,6 @@ class ErrorCode(StrEnum):
     PASSWORD_PROTECTED = "password_protected"
     CORRUPT_FILE = "corrupt_file"
     UNSUPPORTED_FORMAT = "unsupported_format"
-    FULL_MODE_UNAVAILABLE = "full_mode_unavailable"
     LANGUAGE_DATA_MISSING = "language_data_missing"
     ENGINE_MISSING = "engine_missing"
     TOO_LARGE = "too_large"
@@ -55,10 +54,6 @@ class EngineMissingError(LokalOcrError):
 
 class LanguageDataMissingError(LokalOcrError):
     code = ErrorCode.LANGUAGE_DATA_MISSING
-
-
-class FullModeUnavailableError(LokalOcrError):
-    code = ErrorCode.FULL_MODE_UNAVAILABLE
 
 
 class CancelledError(LokalOcrError):

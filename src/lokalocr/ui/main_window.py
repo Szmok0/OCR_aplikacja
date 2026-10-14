@@ -25,19 +25,15 @@ from PySide6.QtGui import (
     QDesktopServices,
     QDragEnterEvent,
     QDropEvent,
-    QIcon,
     QImage,
     QKeySequence,
     QMouseEvent,
-    QPixmap,
     QShortcut,
     QShowEvent,
 )
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
-    QButtonGroup,
-    QCheckBox,
     QComboBox,
     QDialog,
     QFileDialog,
@@ -45,15 +41,11 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QListView,
-    QListWidget,
-    QListWidgetItem,
     QMainWindow,
     QMenu,
     QMessageBox,
     QPushButton,
-    QRadioButton,
     QSplitter,
-    QStackedWidget,
     QTabBar,
     QToolButton,
     QVBoxLayout,
@@ -62,24 +54,22 @@ from PySide6.QtWidgets import (
 
 from lokalocr import config, logsetup, tempdir
 from lokalocr.config import Settings
-from lokalocr.engines.base import OcrEngine, StructureEngine
+from lokalocr.engines.base import OcrEngine
 from lokalocr.errors import ErrorCode, LokalOcrError
 from lokalocr.exporters.common import OutputExistsError, write_atomic
 from lokalocr.exporters.docx import export_docx
 from lokalocr.exporters.html import export_html
-from lokalocr.exporters.images import IMAGES_DIR, export_images
 from lokalocr.exporters.markdown import export_markdown
 from lokalocr.exporters.pdf_text import PdfRenderer, export_searchable_pdf
 from lokalocr.exporters.txt import export_txt
 from lokalocr.loader import SUPPORTED_EXTENSIONS, detect_format
-from lokalocr.model import Block, Document
+from lokalocr.model import Document
 from lokalocr.pipeline import LANGUAGES, ProcessOptions, ProgressEvent
 from lokalocr.ui import icons, theme
 from lokalocr.ui import strings_pl as S
 from lokalocr.ui.help_window import HelpWindow
 from lokalocr.ui.queue_model import ITEM_ROLE, QueueItem, QueueModel, Status
 from lokalocr.ui.settings_dialog import SettingsDialog
-from lokalocr.ui.structure_window import StructureWindow
 from lokalocr.ui.widgets.basic import (
     DropZone,
     OfflineBadge,
@@ -96,7 +86,7 @@ from lokalocr.ui.worker import WRITE_FAILED, ExportController, ProcessingControl
 
 _log = logging.getLogger(__name__)
 
-TAB_TEXT, TAB_PREVIEW, TAB_IMAGES = range(3)
+TAB_TEXT, TAB_PREVIEW = range(2)
 FORMATS = ("docx", "txt", "pdf", "md", "html")
 FORMAT_ICONS = {"txt": "file_txt", "pdf": "file_pdf", "md": "file_markdown", "html": "file_html"}
 
@@ -142,10 +132,8 @@ class MainWindow(QMainWindow):
     def __init__(
         self,
         engine_factory: Callable[[], OcrEngine],
-        full_mode_available: bool = False,
         settings: Settings | None = None,
         persist_settings: bool = False,
-        structure_factory: Callable[[int], StructureEngine] | None = None,
     ) -> None:
         super().__init__()
         self.setWindowTitle(S.APP_NAME)
@@ -153,7 +141,6 @@ class MainWindow(QMainWindow):
         self.setAcceptDrops(True)
         self.resize(1360, 860)
         self.setMinimumSize(QSize(980, 620))
-        self.full_mode_available = full_mode_available
         self.settings = settings or Settings()
         self._persist_settings = persist_settings
         tempdir.set_root(Path(self.settings.temp_dir) if self.settings.temp_dir else None)
@@ -165,8 +152,7 @@ class MainWindow(QMainWindow):
         self._clipboard_timer.timeout.connect(self._clear_clipboard)
 
         self.queue = QueueModel()
-        self.controller = ProcessingController(engine_factory, structure_factory)
-        self._structure: StructureWindow | None = None
+        self.controller = ProcessingController(engine_factory)
         self.controller.progress.connect(self._on_progress)
         self.controller.finished.connect(self._on_finished)
         self.controller.failed.connect(self._on_failed)
@@ -179,7 +165,6 @@ class MainWindow(QMainWindow):
         self._last_dir = Path.home()
         self._closing = False
         self._remove_after_cancel = False
-        self._images_folders: dict[int, Path] = {}
 
         central = QWidget()
         root = QVBoxLayout(central)
@@ -327,28 +312,6 @@ class MainWindow(QMainWindow):
         )
         layout.addWidget(self.lang_combo)
 
-        layout.addWidget(muted_label(S.WORK_MODE, small=True))
-        modes = QHBoxLayout()
-        self.basic_radio = QRadioButton(S.MODE_BASIC)
-        self.full_radio = QRadioButton(S.MODE_FULL)
-        self.basic_radio.setChecked(True)
-        if self.full_mode_available and self.settings.default_mode == "full":
-            self.full_radio.setChecked(True)
-        self.basic_radio.setToolTip(S.MODE_BASIC_TIP)
-        group = QButtonGroup(panel)
-        group.addButton(self.basic_radio)
-        group.addButton(self.full_radio)
-        if self.full_mode_available:
-            self.full_radio.setToolTip(S.MODE_FULL_TIP)
-        else:
-            self.full_radio.setEnabled(False)
-            self.full_radio.setToolTip(S.MODE_FULL_UNAVAILABLE)
-        modes.addWidget(self.basic_radio)
-        modes.addWidget(self.full_radio)
-        modes.addStretch()
-        layout.addLayout(modes)
-        self.full_radio.toggled.connect(self._on_mode_changed)
-
         auto = QHBoxLayout()
         auto_label = QLabel(S.AUTO_PREPROCESS)
         self.preprocess_toggle = ToggleSwitch()
@@ -362,7 +325,7 @@ class MainWindow(QMainWindow):
         return panel
 
     def _build_workspace(self) -> QWidget:
-        """Zones 3 and 4: view tabs, structure button, page preview / image gallery."""
+        """Zones 3 and 4: view tabs and the page preview."""
         panel = QFrame()
         panel.setObjectName("Panel")
         layout = QVBoxLayout(panel)
@@ -374,40 +337,21 @@ class MainWindow(QMainWindow):
         self.tabs.setDrawBase(False)
         self.tabs.addTab(S.TAB_TEXT)
         self.tabs.addTab(S.TAB_PREVIEW)
-        self.tabs.addTab(S.tab_images(0))
         self.tabs.setTabToolTip(TAB_TEXT, S.TAB_TEXT_TIP)
         self.tabs.setTabToolTip(TAB_PREVIEW, S.TAB_PREVIEW_TIP)
-        self.tabs.setTabToolTip(TAB_IMAGES, S.IMAGES_UNAVAILABLE)
-        self.tabs.setTabEnabled(TAB_IMAGES, False)
         self.tabs.currentChanged.connect(self._on_tab_changed)
         head.addWidget(self.tabs)
         head.addStretch()
-        self.structure_btn = QPushButton(S.STRUCTURE)
-        self.structure_btn.setToolTip(S.STRUCTURE_UNAVAILABLE)
-        self.structure_btn.setEnabled(False)
-        self.structure_btn.clicked.connect(self.open_structure)
-        head.addWidget(self.structure_btn)
         layout.addLayout(head)
 
-        self.workspace_stack = QStackedWidget()
         self.preview = PagePreview()
         self.preview.copy_selection_requested.connect(self.copy_selection)
         self.preview.save_selection_requested.connect(self.save_selection)
-        self.workspace_stack.addWidget(self.preview)
-        self.gallery = QListWidget()
-        self.gallery.setObjectName("Gallery")
-        self.gallery.setViewMode(QListWidget.ViewMode.IconMode)
-        self.gallery.setIconSize(QSize(180, 180))
-        self.gallery.setResizeMode(QListWidget.ResizeMode.Adjust)
-        self.gallery.setSpacing(12)
-        self.gallery.setMovement(QListWidget.Movement.Static)
-        self.gallery.setAccessibleName(S.TAB_IMAGES_TIP)
-        self.workspace_stack.addWidget(self.gallery)
-        layout.addWidget(self.workspace_stack, 1)
+        layout.addWidget(self.preview, 1)
         return panel
 
     def _build_action_bar(self) -> QWidget:
-        """Zone 6: save buttons and output options."""
+        """Zone 6: save buttons."""
         bar = QFrame()
         bar.setObjectName("Panel")
         layout = QHBoxLayout(bar)
@@ -437,44 +381,17 @@ class MainWindow(QMainWindow):
             button.clicked.connect(lambda _=False, f=fmt: self.save(f))
             self.format_buttons[fmt] = button
             layout.addWidget(button)
-        self.open_images_btn = QPushButton(S.open_images(0))
-        self.open_images_btn.setProperty("iconName", "icon_folder_open")
-        self.open_images_btn.setToolTip(S.IMAGES_UNAVAILABLE)
-        self.open_images_btn.setEnabled(False)
-        self.open_images_btn.clicked.connect(self.open_images_folder)
-        layout.addWidget(self.open_images_btn)
         layout.addStretch()
-
-        options = QVBoxLayout()
-        options.setSpacing(2)
-        options.addWidget(muted_label(S.OUTPUT_OPTIONS, small=True))
-        row = QHBoxLayout()
-        self.clean_text_cb = QCheckBox(S.CLEAN_TEXT_ALWAYS)
-        self.clean_text_cb.setChecked(True)
-        self.clean_text_cb.setEnabled(False)
-        self.clean_text_cb.setToolTip(S.CLEAN_TEXT_TIP)
-        self.keep_structure_cb = QCheckBox(S.KEEP_STRUCTURE)
-        self.keep_structure_cb.setChecked(self.settings.keep_structure)
-        self.keep_structure_cb.setToolTip(S.KEEP_STRUCTURE_TIP)
-        self.structure_info = QLabel()
-        self.structure_info.setToolTip(S.KEEP_STRUCTURE_TIP)
-        row.addWidget(self.clean_text_cb)
-        row.addSpacing(8)
-        row.addWidget(self.keep_structure_cb)
-        row.addWidget(self.structure_info)
-        options.addLayout(row)
-        layout.addLayout(options)
         self._refresh_action_icons()
         return bar
 
     def _refresh_action_icons(self) -> None:
         self.save_main_btn.setIcon(icons.icon("icon_save", "on_accent"))
         self.save_main_btn.setIconSize(QSize(16, 16))
-        for button in (*self.format_buttons.values(), self.open_images_btn):
+        for button in self.format_buttons.values():
             name = button.property("iconName")
             if name:
                 button.setIcon(icons.icon(str(name)))
-        self.structure_info.setPixmap(icons.pixmap("icon_info", 16, "text_muted"))
 
     def _install_shortcuts(self) -> None:
         def bind(
@@ -505,7 +422,6 @@ class MainWindow(QMainWindow):
         )
         return ProcessOptions(
             lang=str(self.lang_combo.currentData()),
-            mode="full" if self.full_radio.isChecked() else "basic",
             pdf_dpi=self.settings.pdf_dpi,
             preprocess=preprocess,
         )
@@ -706,8 +622,6 @@ class MainWindow(QMainWindow):
             self.queue.changed(item_id)
             if self._is_selected(item_id):
                 self._refresh_selected()
-                if document.mode == "full" and document.images:
-                    self.toast.show_message(S.images_found(len(document.images)))
         QTimer.singleShot(0, self._schedule)
 
     def _on_failed(self, item_id: int, code: str) -> None:
@@ -746,7 +660,7 @@ class MainWindow(QMainWindow):
         item = self.queue.get(item_id)
         if item is None or item.status is not Status.WAITING:
             return
-        _ = code  # the full run reports the precise error
+        _ = code  # processing the file reports the precise error
 
     # --- selection / result ------------------------------------------------------------
 
@@ -780,108 +694,15 @@ class MainWindow(QMainWindow):
     def _update_actions(self) -> None:
         item = self.current_item()
         has_result = item is not None and item.document is not None
-        full = (
-            has_result
-            and item is not None
-            and item.document is not None
-            and (item.document.mode == "full")
-        )
         self.save_main_btn.setEnabled(has_result)
         for button in self.format_buttons.values():
             button.setEnabled(has_result)
-        self.keep_structure_cb.setEnabled(full)
-        self.structure_btn.setEnabled(full)
-        self.structure_btn.setToolTip(S.STRUCTURE_TIP if full else S.STRUCTURE_UNAVAILABLE)
-        image_count = len(item.document.images) if item is not None and item.document else 0
-        self.tabs.setTabText(TAB_IMAGES, S.tab_images(image_count))
-        self.tabs.setTabEnabled(TAB_IMAGES, full)
-        self.tabs.setTabToolTip(TAB_IMAGES, S.TAB_IMAGES_TIP if full else S.IMAGES_UNAVAILABLE)
-        self.open_images_btn.setText(S.open_images(image_count))
-        self.open_images_btn.setEnabled(full and image_count > 0)
-        self.open_images_btn.setToolTip(S.OPEN_IMAGES_TIP if full else S.IMAGES_UNAVAILABLE)
-        self._fill_gallery(item.document if item is not None else None)
 
     # --- view tabs ----------------------------------------------------------------------
 
     def _on_tab_changed(self, index: int) -> None:
-        self.workspace_stack.setCurrentIndex(1 if index == TAB_IMAGES else 0)
         self.result.setVisible(index == TAB_TEXT)
         self.preview.set_overlay_visible(index == TAB_PREVIEW)
-
-    def open_structure(self) -> None:
-        item = self.current_item()
-        if item is None or item.document is None or item.document.mode != "full":
-            return
-        if self._structure is not None:
-            self._structure.close()
-        self._structure = StructureWindow(
-            item.document, item.path, self.preview.page_image, parent=self
-        )
-        self._structure.block_selected.connect(self._on_structure_block)
-        self._structure.highlight_toggled.connect(
-            lambda on: self.preview.highlight(None) if not on else None
-        )
-        self._structure.show()
-
-    def _on_structure_block(self, page_index: int, block: Block) -> None:
-        """§7.4: selecting a block scrolls to it and highlights it in the main window."""
-        if self.preview.index != page_index:
-            self.preview.go_to(page_index)
-        if self._structure is not None and self._structure.highlight_enabled:
-            self.preview.highlight(block.bbox)
-            if block.bbox is not None and self.preview._pixmap_item is not None:
-                page = (
-                    self.preview._pages[page_index]
-                    if page_index < len(self.preview._pages)
-                    else None
-                )
-                if page is not None:
-                    sx = self.preview._pixmap_item.pixmap().width() / max(1, page.width)
-                    self.preview.view.centerOn(
-                        (block.bbox.x + block.bbox.width / 2) * sx,
-                        (block.bbox.y + block.bbox.height / 2) * sx,
-                    )
-
-    def _fill_gallery(self, document: Document | None) -> None:
-        self.gallery.clear()
-        if document is None:
-            return
-        for ref, data in document.images.items():
-            image = QImage.fromData(data)
-            if image.isNull():
-                continue
-            item = QListWidgetItem(QIcon(QPixmap.fromImage(image)), ref)
-            item.setToolTip(ref)
-            self.gallery.addItem(item)
-
-    def open_images_folder(self) -> None:
-        """Save the figures to <folder>/obrazy and open it (§7.3 zone 6)."""
-        item = self.current_item()
-        if item is None or item.document is None or not item.document.images:
-            return
-        folder = self._images_folders.get(item.id)
-        if folder is None or not folder.is_dir():
-            base = self.settings.output_dir or QFileDialog.getExistingDirectory(
-                self, S.CHOOSE_IMAGES_FOLDER, str(self._last_dir)
-            )
-            if not base:
-                return
-            folder = Path(base) / IMAGES_DIR
-            stem = Path(self.settings.output_name(item.path.stem, "x")).stem
-            try:
-                export_images(item.document, folder, stem=stem)
-            except OutputExistsError:
-                if QMessageBox.question(self, S.APP_NAME, S.overwrite_question(IMAGES_DIR)) != (
-                    QMessageBox.StandardButton.Yes
-                ):
-                    return
-                export_images(item.document, folder, stem=stem, overwrite=True)
-            except OSError:
-                QMessageBox.warning(self, S.APP_NAME, S.SAVE_FAILED)
-                return
-            self._images_folders[item.id] = folder
-            self.toast.show_message(S.images_saved(len(item.document.images)))
-        QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
 
     # --- saving ------------------------------------------------------------------------
 
@@ -917,7 +738,6 @@ class MainWindow(QMainWindow):
         # Either the native dialog or the question above confirmed overwriting.
         overwrite = path.exists()
         document = item.document
-        structure = self.keep_structure_cb.isChecked()
         self._last_dir = path.parent
         if fmt == "pdf":
             options = item.options or self.options()
@@ -945,15 +765,11 @@ class MainWindow(QMainWindow):
             if fmt == "txt":
                 export_txt(document, path, layout=self.result.layout_mode, overwrite=overwrite)
             elif fmt == "docx":
-                export_docx(document, path, structure=structure, overwrite=overwrite)
+                export_docx(document, path, overwrite=overwrite)
             elif fmt == "md":
-                export_markdown(document, path, structure=structure, overwrite=overwrite)
-                if structure and document.mode == "full" and document.images:
-                    self._images_folders[item.id] = path.parent / IMAGES_DIR
+                export_markdown(document, path, overwrite=overwrite)
             elif fmt == "html":
-                export_html(
-                    document, path, structure=structure, title=item.path.stem, overwrite=overwrite
-                )
+                export_html(document, path, title=item.path.stem, overwrite=overwrite)
         except OutputExistsError:
             return
         except OSError:
@@ -977,21 +793,6 @@ class MainWindow(QMainWindow):
         action, self._toast_action = self._toast_action, None
         if action is not None:
             action()
-
-    def _on_mode_changed(self) -> None:
-        """Offer to process the shown file again when the mode no longer matches."""
-        item = self.current_item()
-        if item is None or item.status is not Status.DONE or item.options is None:
-            return
-        mode = "full" if self.full_radio.isChecked() else "basic"
-        if item.options.mode == mode:
-            return
-        item_id = item.id
-        self._show_toast(
-            S.mode_differs(item.options.mode),
-            S.reprocess_in_mode(mode),
-            lambda: self.reprocess(item_id),
-        )
 
     def _on_export_progress(self, item_id: int, event: ProgressEvent) -> None:
         if self._is_selected(item_id):
@@ -1111,7 +912,6 @@ class MainWindow(QMainWindow):
         dialog = SettingsDialog(
             self.settings,
             engine_info=self._engine_info,
-            full_mode_available=self.full_mode_available,
             parent=self,
         )
         dialog.clear_temp_requested.connect(tempdir.cleanup)
@@ -1137,11 +937,6 @@ class MainWindow(QMainWindow):
         tempdir.set_root(Path(settings.temp_dir) if settings.temp_dir else None)
         self.lang_combo.setCurrentIndex(max(0, self.lang_combo.findData(settings.default_lang)))
         self.preprocess_toggle.setChecked(settings.auto_preprocess)
-        if self.full_mode_available:
-            (self.full_radio if settings.default_mode == "full" else self.basic_radio).setChecked(
-                True
-            )
-        self.keep_structure_cb.setChecked(settings.keep_structure)
         self.save_main_btn.setText(S.save_as(settings.default_format))
         self.save_main_btn.setToolTip(f"{S.FORMAT_TIPS[settings.default_format]} (Ctrl+S)")
         if (old.theme, old.font_size) != (settings.theme, settings.font_size):
