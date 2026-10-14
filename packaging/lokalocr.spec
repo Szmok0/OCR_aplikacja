@@ -7,7 +7,9 @@
 import os
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+from importlib.metadata import distributions
+
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules, copy_metadata
 
 ROOT = Path(SPECPATH).resolve().parent  # noqa: F821 (provided by PyInstaller)
 RES = ROOT / "src" / "lokalocr" / "ui" / "resources"
@@ -28,6 +30,14 @@ if FULL:
     for package in ("docling", "docling_core", "docling_parse", "docling_ibm_models"):
         datas += collect_data_files(package)
         hiddenimports += collect_submodules(package)
+    # Docling finds its models (OCR, layout, tables, ...) as plugins through the
+    # "docling" entry-point group, read from package metadata (dist-info). PyInstaller
+    # does not bundle metadata by default: without it Docling knows no models and
+    # full mode fails at once ("No class found with the name ...").
+    for dist in distributions():
+        if any(ep.group == "docling" for ep in dist.entry_points):
+            datas += copy_metadata(dist.metadata["Name"])
+            hiddenimports += [ep.module for ep in dist.entry_points if ep.group == "docling"]
     datas.append((str(ROOT / "models"), "models"))
 else:
     excludes += ["torch", "torchvision", "transformers", "docling", "docling_core"]
