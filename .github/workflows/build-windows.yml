@@ -131,6 +131,8 @@ jobs:
           name: LokalOCR-windows-${{ matrix.variant }}
           path: dist/LokalOCR
           retention-days: 30
+          # Ship exactly what passed the self-test (the default drops dot-files).
+          include-hidden-files: true
 
   release:
     name: publish the download (Releases)
@@ -147,6 +149,30 @@ jobs:
         with:
           pattern: LokalOCR-windows-*
           path: artifacts
+
+      - name: Check the full package's models against their manifest
+        # The self-test runs before the upload; this checks what is published.
+        run: |
+          python3 - <<'PY'
+          import json, pathlib, sys
+          for root in sorted(pathlib.Path("artifacts").glob("LokalOCR-windows-*")):
+              folder = root / "_internal" / "models" / "docling"
+              manifest = folder / "MANIFEST.json"
+              if not manifest.is_file():
+                  if root.name.endswith("-full"):
+                      sys.exit(f"{root.name}: models/docling/MANIFEST.json is missing")
+                  continue
+              entries = json.loads(manifest.read_text(encoding="utf-8"))["files"]
+              bad = [
+                  e["path"] for e in entries
+                  if not any(part.startswith(".") for part in e["path"].split("/"))
+                  and (not (folder / e["path"]).is_file()
+                       or (folder / e["path"]).stat().st_size != e["size"])
+              ]
+              if bad:
+                  sys.exit(f"{root.name}: incomplete models: {bad[:5]}")
+              print(f"{root.name}: {len(entries)} model files listed, all present")
+          PY
 
       - name: Zip the packages (one LokalOCR folder per ZIP)
         run: |

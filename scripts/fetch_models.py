@@ -28,7 +28,11 @@ os.environ.pop("HF_HUB_OFFLINE", None)
 os.environ.pop("TRANSFORMERS_OFFLINE", None)
 
 MANIFEST = "MANIFEST.json"
-SKIP = {MANIFEST, ".gitattributes"}
+
+
+def _skipped(rel: str) -> bool:
+    """The manifest itself and dot-files/folders (git metadata, download caches)."""
+    return rel == MANIFEST or any(part.startswith(".") for part in rel.split("/"))
 
 
 def sha256(path: Path) -> str:
@@ -43,7 +47,7 @@ def write_manifest(folder: Path) -> Path:
     files = []
     for path in sorted(p for p in folder.rglob("*") if p.is_file()):
         rel = path.relative_to(folder).as_posix()
-        if rel in SKIP or "/.cache/" in f"/{rel}" or rel.startswith(".cache/"):
+        if _skipped(rel):
             continue
         files.append({"path": rel, "size": path.stat().st_size, "sha256": sha256(path)})
     manifest = folder / MANIFEST
@@ -55,6 +59,8 @@ def verify(folder: Path) -> list[str]:
     data = json.loads((folder / MANIFEST).read_text(encoding="utf-8"))
     problems = []
     for entry in data["files"]:
+        if _skipped(entry["path"]):  # older manifests listed .gitattributes etc.
+            continue
         path = folder / entry["path"]
         if not path.is_file():
             problems.append(f"missing: {entry['path']}")
