@@ -64,6 +64,13 @@ def _candidate_model_dirs() -> list[Path]:
     return dirs
 
 
+def _is_hidden(rel: str) -> bool:
+    """Dot-files (git metadata of the model repositories) are not needed to run
+    the models and may be dropped when the package is copied (CI artifacts,
+    archivers), so they never decide whether the models are complete."""
+    return any(part.startswith(".") for part in rel.split("/"))
+
+
 def find_models_dir() -> Path | None:
     """The Docling artifacts folder, if a complete model set is installed."""
     for base in _candidate_model_dirs():
@@ -78,6 +85,7 @@ def find_models_dir() -> Path | None:
         if all(
             (folder / e["path"]).is_file() and (folder / e["path"]).stat().st_size == e["size"]
             for e in entries
+            if not _is_hidden(e["path"])
         ):
             return folder
     return None
