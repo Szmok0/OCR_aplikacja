@@ -43,6 +43,10 @@ __all__ = [
 _log = logging.getLogger(__name__)
 
 MODELS_ENV = "LOKALOCR_MODELS"
+# Set only by the self-test (synthetic page): the child then reports the full
+# traceback, messages included. Otherwise only exception types and code
+# locations leave the child, as messages may contain document data (§0.2).
+DIAGNOSTICS_ENV = "LOKALOCR_FULL_DIAGNOSTICS"
 MANIFEST = "MANIFEST.json"
 _POLL_SECONDS = 0.1
 _START_TIMEOUT = 600.0  # loading torch and models on a slow laptop takes a while
@@ -172,10 +176,26 @@ def _child(
             )
             out.put(("page", min(last, pages)))
         out.put(("result", document))
-    except Exception as exc:  # reported to the parent as an error code only
+    except Exception as exc:  # reported to the parent as an error code + safe details
         name = type(exc).__name__
         code = ErrorCode.PASSWORD_PROTECTED if "Password" in name else ErrorCode.INTERNAL
-        out.put(("error", code.value, name))
+        out.put(("error", code.value, _describe(exc)))
+
+
+def _describe(exc: BaseException) -> str:
+    """Exception chain as types and code locations (full traceback in diagnostics mode)."""
+    import traceback
+
+    if os.environ.get(DIAGNOSTICS_ENV) == "1":
+        return "".join(traceback.format_exception(exc))
+    parts: list[str] = []
+    seen: BaseException | None = exc
+    while seen is not None and len(parts) < 5:
+        frames = traceback.extract_tb(seen.__traceback__)[-3:]
+        where = " <- ".join(f"{Path(f.filename).name}:{f.lineno}" for f in reversed(frames))
+        parts.append(f"{type(seen).__name__} at {where or '?'}")
+        seen = seen.__cause__ or seen.__context__
+    return " | caused by ".join(parts)
 
 
 class DoclingEngine:
@@ -243,14 +263,15 @@ class DoclingEngine:
                     document: Document = message[1]
                     return document
                 elif kind == "error":
-                    if len(message) > 2:
-                        _log.error("Full-mode analysis failed: %s", message[2])
+                    detail = str(message[2]) if len(message) > 2 else ""
+                    if detail:
+                        _log.error("Full-mode analysis failed: %s", detail)
                     code = ErrorCode(message[1])
                     if code is ErrorCode.PASSWORD_PROTECTED:
                         raise PasswordProtectedError("password protected")
                     if code is ErrorCode.CORRUPT_FILE:
                         raise CorruptFileError("docling could not convert the document")
-                    raise LokalOcrError("docling failed", code=code)
+                    raise LokalOcrError(f"docling failed: {detail}", code=code)
         finally:
             if process.is_alive():
                 process.terminate()

@@ -26,8 +26,6 @@ jobs:
     name: windows / ${{ matrix.variant }}
     runs-on: windows-latest
     timeout-minutes: 60
-    # The full variant (Docling + PyTorch + models) is experimental for now.
-    continue-on-error: ${{ matrix.variant == 'full' }}
     strategy:
       fail-fast: false
       matrix:
@@ -112,7 +110,10 @@ jobs:
         run: |
           $env:PATH = "C:\Windows\System32;C:\Windows"   # no system Tesseract on PATH
           $report = Join-Path $env:RUNNER_TEMP "selftest.json"
-          $p = Start-Process -FilePath "dist\LokalOCR\LokalOCR.exe" -ArgumentList "--selftest", "`"$report`"" -Wait -PassThru
+          # The full variant also runs full mode (Docling child process) on a CV page with a photo.
+          $selftestArgs = @("--selftest", "`"$report`"")
+          if ($env:LOKALOCR_BUILD_FULL -eq "1") { $selftestArgs += "--full" }
+          $p = Start-Process -FilePath "dist\LokalOCR\LokalOCR.exe" -ArgumentList $selftestArgs -Wait -PassThru
           Get-Content $report -Encoding utf8
           if ($p.ExitCode -ne 0) { throw "self-test failed with exit code $($p.ExitCode)" }
           & "dist\LokalOCR\lokalocr-cli.exe" --version
@@ -137,8 +138,8 @@ jobs:
   release:
     name: publish the download (Releases)
     needs: build
-    # Only builds of main become the downloadable version. A failed (optional)
-    # full build still publishes the basic package.
+    # Only builds of main become the downloadable version. If the full build
+    # fails, the basic package is still published (the check above stays red).
     if: ${{ !cancelled() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30

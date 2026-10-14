@@ -1,8 +1,11 @@
-"""Installation self-test: ``LokalOCR.exe --selftest report.json`` (stage 7).
+"""Installation self-test: ``LokalOCR.exe --selftest report.json [--full]`` (stage 7).
 
 Renders a Polish sentence with a system font, runs the real OCR pipeline
-offline and writes a JSON report. Used by CI on the packaged build and by
-the owner after installing on a new machine. Exit code 0 = OK.
+offline and writes a JSON report. With ``--full`` it also runs full mode
+(Docling, in its child process) on a synthetic CV page with a photo and
+checks that the photo is extracted. Used by CI on the packaged build and by
+the owner after installing on a new machine. Exit code 0 = OK. The report
+holds only synthetic sample text, never user documents.
 """
 
 from __future__ import annotations
@@ -59,7 +62,79 @@ def _render_sample(path: Path) -> None:
     image.save(str(path))  # format from the .png suffix
 
 
-def run(report_path: Path | None) -> int:
+def _render_cv_page(path: Path) -> None:
+    """A synthetic CV page: a photo-like picture, a name heading and text (150 dpi)."""
+    import numpy as np
+    from PySide6.QtCore import QRect, Qt
+    from PySide6.QtGui import QColor, QImage, QPainter
+
+    width, height = 1240, 1754
+    page = QImage(width, height, QImage.Format.Format_RGB32)
+    page.fill(QColor("white"))
+    # Photo: smooth colour gradients with noise, like a scanned portrait.
+    rng = np.random.default_rng(7)
+    ph, pw = 360, 290
+    y, x = np.mgrid[0:ph, 0:pw]
+    base = np.stack(
+        [150 + 70 * np.sin(x / 40), 120 + 60 * np.cos(y / 35), 140 + 50 * np.sin((x + y) / 60)],
+        axis=-1,
+    )
+    photo = np.clip(base + rng.normal(0, 18, base.shape), 0, 255).astype(np.uint8)
+    photo_img = QImage(photo.tobytes(), pw, ph, pw * 3, QImage.Format.Format_RGB888).copy()
+    painter = QPainter(page)
+    painter.drawImage(110, 110, photo_img)
+    painter.setPen(QColor("black"))
+    font = _sample_font()
+    font.setPixelSize(54)
+    font.setBold(True)
+    painter.setFont(font)
+    painter.drawText(QRect(460, 150, 700, 80), int(Qt.AlignmentFlag.AlignLeft), "Anna Przykładowa")
+    font.setPixelSize(28)
+    font.setBold(False)
+    painter.setFont(font)
+    painter.drawText(
+        QRect(460, 240, 700, 40), int(Qt.AlignmentFlag.AlignLeft), "Specjalistka ds. księgowości"
+    )
+    font.setPixelSize(36)
+    font.setBold(True)
+    painter.setFont(font)
+    painter.drawText(
+        QRect(110, 560, 1000, 60), int(Qt.AlignmentFlag.AlignLeft), "DOŚWIADCZENIE ZAWODOWE"
+    )
+    font.setPixelSize(26)
+    font.setBold(False)
+    painter.setFont(font)
+    lines = [
+        "Główna księgowa, Biuro Rachunkowe Przykład Sp. z o.o. (2019 – obecnie)",
+        "Prowadzenie pełnej księgowości oraz rozliczeń podatkowych klientów.",
+        "Przygotowanie deklaracji VAT, CIT i PIT; nadzór nad zespołem.",
+        "Samodzielna księgowa, Hurtownia Źródło S.A. (2016 – 2019)",
+    ]
+    for i, line in enumerate(lines):
+        painter.drawText(QRect(110, 650 + i * 50, 1050, 44), int(Qt.AlignmentFlag.AlignLeft), line)
+    painter.end()
+    page.setDotsPerMeterX(5906)  # 150 dpi
+    page.setDotsPerMeterY(5906)
+    page.save(str(path))
+
+
+def _run_full(report: dict[str, object], tmp: Path) -> bool:
+    from lokalocr.engines.docling_engine import DoclingEngine
+    from lokalocr.model import BlockType
+    from lokalocr.pipeline import ProcessOptions, process_full
+
+    sample = tmp / "cv.png"
+    _render_cv_page(sample)
+    started = time.monotonic()
+    document = process_full(DoclingEngine(threads=2), sample, ProcessOptions(mode="full"))
+    types = [block.type for _, block in document.blocks()]
+    report["full_seconds"] = round(time.monotonic() - started, 1)
+    report["full_blocks"] = {t.value: types.count(t) for t in sorted(set(types), key=str)}
+    report["full_images"] = len(document.images)
+    return BlockType.FIGURE in types and len(document.images) >= 1
+
+
+def run(report_path: Path | None, full: bool = False) -> int:
     from lokalocr import __version__, netguard
     from lokalocr.engines.docling_engine import find_models_dir, is_available
     from lokalocr.engines.tesseract import TesseractEngine
@@ -82,6 +157,17 @@ def run(report_path: Path | None) -> int:
             ok = "gęślą" in text and "2024" in text
         report["full_mode"] = is_available()
         report["models"] = str(find_models_dir() or "")
+        if full:
+            basic_ok, ok = ok, False  # full mode must succeed too
+            if not is_available():
+                report["full_error"] = "full mode is not available"
+            else:
+                from lokalocr.engines.docling_engine import DIAGNOSTICS_ENV
+
+                os.environ[DIAGNOSTICS_ENV] = "1"  # synthetic page: full tracebacks are fine
+                with tempfile.TemporaryDirectory(prefix="lokalocr-selftest-") as tmp:
+                    report["full_ok"] = _run_full(report, Path(tmp))
+                ok = basic_ok and bool(report["full_ok"])
     except Exception as exc:  # the report must be written whatever happens
         report["error"] = f"{type(exc).__name__}: {exc}"
     report["ok"] = ok
@@ -94,4 +180,5 @@ def run(report_path: Path | None) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(run(Path(sys.argv[1]) if len(sys.argv) > 1 else None))
+    args = [a for a in sys.argv[1:] if a != "--full"]
+    sys.exit(run(Path(args[0]) if args else None, full="--full" in sys.argv[1:]))
