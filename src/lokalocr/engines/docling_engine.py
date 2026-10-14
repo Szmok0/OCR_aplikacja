@@ -188,7 +188,7 @@ def _describe(exc: BaseException) -> str:
 
     if os.environ.get(DIAGNOSTICS_ENV) == "1":
         return "".join(traceback.format_exception(exc))
-    parts = []
+    parts: list[str] = []
     seen: BaseException | None = exc
     while seen is not None and len(parts) < 5:
         frames = traceback.extract_tb(seen.__traceback__)[-3:]
