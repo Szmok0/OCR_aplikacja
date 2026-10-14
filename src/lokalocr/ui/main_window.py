@@ -218,7 +218,8 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central)
 
         self.toast = Toast(central)
-        self.toast.action_triggered.connect(self._show_last_saved)
+        self._toast_action: Callable[[], None] | None = None
+        self.toast.action_triggered.connect(self._on_toast_action)
         self._last_saved: Path | None = None
 
         self._engine_signal.connect(self._on_engine_checked)
@@ -346,6 +347,7 @@ class MainWindow(QMainWindow):
         modes.addWidget(self.full_radio)
         modes.addStretch()
         layout.addLayout(modes)
+        self.full_radio.toggled.connect(self._on_mode_changed)
 
         auto = QHBoxLayout()
         auto_label = QLabel(S.AUTO_PREPROCESS)
@@ -531,8 +533,10 @@ class MainWindow(QMainWindow):
                 expanded.append(path)
         rejected = 0
         first_new: QueueItem | None = None
+        existing: QueueItem | None = None
         for path in expanded:
             if self.queue.contains_path(path):
+                existing = existing or self.queue.find_path(path)
                 continue
             try:
                 kind = detect_format(path)
@@ -550,8 +554,19 @@ class MainWindow(QMainWindow):
             self._last_dir = path.parent
         if rejected:
             self.toast.show_message(S.rejected_files(rejected))
-        if first_new is not None and not self.queue_view.currentIndex().isValid():
+        if first_new is not None:
+            # Show what was just added, not the result of an earlier file.
             self.select_item(first_new.id)
+        elif existing is not None and len(expanded) == 1:
+            # The same file again: show it, and process it again if the quick
+            # settings (mode, language, image clean-up) changed since.
+            self.select_item(existing.id)
+            done = existing.status in (Status.DONE, Status.ERROR)
+            if done and existing.options is not None and existing.options != self.options():
+                self.toast.show_message(S.REPROCESSING_WITH_NEW_SETTINGS)
+                self.reprocess(existing.id)
+            else:
+                self.toast.show_message(S.ALREADY_IN_QUEUE)
         self._update_queue_header()
         self._schedule()
 
@@ -691,6 +706,8 @@ class MainWindow(QMainWindow):
             self.queue.changed(item_id)
             if self._is_selected(item_id):
                 self._refresh_selected()
+                if document.mode == "full" and document.images:
+                    self.toast.show_message(S.images_found(len(document.images)))
         QTimer.singleShot(0, self._schedule)
 
     def _on_failed(self, item_id: int, code: str) -> None:
@@ -950,7 +967,31 @@ class MainWindow(QMainWindow):
 
     def _saved(self, path: Path) -> None:
         self._last_saved = path
-        self.toast.show_message(S.saved_as(path.name), S.SHOW_IN_FOLDER)
+        self._show_toast(S.saved_as(path.name), S.SHOW_IN_FOLDER, self._show_last_saved)
+
+    def _show_toast(self, text: str, action: str, callback: Callable[[], None]) -> None:
+        self._toast_action = callback
+        self.toast.show_message(text, action, msec=10000)
+
+    def _on_toast_action(self) -> None:
+        action, self._toast_action = self._toast_action, None
+        if action is not None:
+            action()
+
+    def _on_mode_changed(self) -> None:
+        """Offer to process the shown file again when the mode no longer matches."""
+        item = self.current_item()
+        if item is None or item.status is not Status.DONE or item.options is None:
+            return
+        mode = "full" if self.full_radio.isChecked() else "basic"
+        if item.options.mode == mode:
+            return
+        item_id = item.id
+        self._show_toast(
+            S.mode_differs(item.options.mode),
+            S.reprocess_in_mode(mode),
+            lambda: self.reprocess(item_id),
+        )
 
     def _on_export_progress(self, item_id: int, event: ProgressEvent) -> None:
         if self._is_selected(item_id):

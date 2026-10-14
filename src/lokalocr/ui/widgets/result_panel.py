@@ -356,7 +356,9 @@ class ResultPanel(QFrame):
             self.status.setText("")
             return
         words = len(self.visible_text().split())
-        self.status.setText(S.status_line(doc.page_count, words, doc.lang, doc.mean_confidence))
+        self.status.setText(
+            S.status_line(doc.page_count, words, doc.lang, doc.mean_confidence, doc.mode)
+        )
 
     def copy_text(self) -> None:
         cursor = self.text.textCursor()
