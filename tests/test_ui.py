@@ -498,7 +498,10 @@ def test_save_pdf_in_background(
     qtbot.waitUntil(lambda: not window.exporter.busy, timeout=10000)
     qtbot.waitUntil(lambda: out.exists(), timeout=5000)
     assert out.read_bytes().startswith(b"%PDF")
-    assert window.result.stack.currentIndex() == window.result.PAGE_RESULT
+    # The worker clears ``busy`` before its "finished" signal reaches the UI thread.
+    qtbot.waitUntil(
+        lambda: window.result.stack.currentIndex() == window.result.PAGE_RESULT, timeout=5000
+    )
 
 
 def test_cancel_pdf_export(
