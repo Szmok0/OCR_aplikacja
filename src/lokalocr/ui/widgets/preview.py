@@ -47,7 +47,7 @@ from PySide6.QtWidgets import (
 from lokalocr.errors import LokalOcrError
 from lokalocr.loader import open_document
 from lokalocr.logsafe import log_unexpected
-from lokalocr.model import BBox, Page
+from lokalocr.model import Page
 from lokalocr.preprocess import estimate_skew
 from lokalocr.ui import icons, theme
 from lokalocr.ui import strings_pl as S
@@ -257,7 +257,6 @@ class PagePreview(QFrame):
         self._signals = _Rendered()
         self._signals.done.connect(self._on_rendered)
         self._overlay_visible = False
-        self._highlight: BBox | None = None
         self._skew = 0.0
         self._shown: tuple[Path, int] | None = None  # page currently in the scene
 
@@ -490,10 +489,6 @@ class PagePreview(QFrame):
             self.view.fit_mode = True
         self.go_to(index if not same else self._index)
 
-    def set_pages(self, pages: list[Page]) -> None:
-        self._pages = pages
-        self._draw_overlay()
-
     @property
     def index(self) -> int:
         return self._index
@@ -580,14 +575,10 @@ class PagePreview(QFrame):
             self.view.apply_transform()
         self._draw_overlay()
 
-    # --- block overlay (Podgląd tab, structure window) ------------------------------------
+    # --- block overlay (Podgląd tab) ------------------------------------------------------
 
     def set_overlay_visible(self, visible: bool) -> None:
         self._overlay_visible = visible
-        self._draw_overlay()
-
-    def highlight(self, bbox: BBox | None) -> None:
-        self._highlight = bbox
         self._draw_overlay()
 
     def _draw_overlay(self) -> None:
@@ -604,34 +595,17 @@ class PagePreview(QFrame):
         sx = self._pixmap_item.pixmap().width() / max(1, page.width)
         sy = self._pixmap_item.pixmap().height() / max(1, page.height)
         accent = theme.color("accent")
-        boxes: list[tuple[BBox, bool]] = []
-        if self._overlay_visible:
-            boxes += [(b.bbox, False) for b in page.blocks if b.bbox is not None]
-        if self._highlight is not None:
-            boxes.append((self._highlight, True))
-        for bbox, strong in boxes:
+        boxes = [b.bbox for b in page.blocks if b.bbox is not None] if self._overlay_visible else []
+        for bbox in boxes:
             rect = QGraphicsRectItem(bbox.x * sx, bbox.y * sy, bbox.width * sx, bbox.height * sy)
-            pen = QPen(accent, 2.5 if strong else 1.2)
+            pen = QPen(accent, 1.2)
             pen.setCosmetic(True)
             rect.setPen(pen)
             fill = QColor(accent)
-            fill.setAlpha(60 if strong else 22)
+            fill.setAlpha(22)
             rect.setBrush(fill)
             scene.addItem(rect)
             self._overlay_items.append(rect)
-
-    def page_image(self, index: int) -> QImage | None:
-        """Preview image of a page (from the cache, else rendered now) for block crops."""
-        if self._path is None:
-            return None
-        cached = self._cache.get((self._path, index))
-        if cached is not None:
-            return cached[0]
-        try:
-            with open_document(self._path) as doc:
-                return pil_to_qimage(doc.render(index, PREVIEW_DPI).image)
-        except LokalOcrError:
-            return None
 
     def shutdown(self) -> None:
         self._pool.shutdown(wait=False, cancel_futures=True)

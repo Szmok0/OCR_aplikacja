@@ -2,19 +2,19 @@
 
 > Nazwa robocza: **LokalOCR**. Aplikacja desktopowa do OCR i konwersji dokumentów, działająca **wyłącznie offline**.
 > Ten plik jest jednocześnie specyfikacją (funkcje, architektura, UI) i zbiorem zasad dla agenta (Claude Code). Czytaj go w całości przed każdą większą zmianą.
-> **Decyzja właściciela (14.10.2026): tryb pełny (Docling) usunięty z aplikacji i repozytorium — zostaje tylko tryb podstawowy.** Pakiet z modelami był za duży (ok. 2 GB po instalacji) i niestabilny na docelowych laptopach. Obrazy (np. zdjęcie z CV) użytkownik wycina ręcznie narzędziem „Zaznacz obszar” w podglądzie. Opisy trybu pełnego, karty *Obrazy*, okna *Struktura dokumentu*, opcji „Tryb pracy” i „Zachowaj strukturę” w §3, §5, §7 i §10 są historyczne — nie wracaj do nich bez wyraźnej prośby właściciela.
+> **Jeden tryb pracy: OCR Tesseractem.** Tryb pełny (Docling: struktura dokumentu, tabele, automatyczne wyciąganie obrazów) został zrealizowany, a potem usunięty decyzją właściciela z 14.10.2026 — pakiet z modelami ważył ok. 2 GB i był niestabilny na docelowych laptopach. Fragmenty strony (np. zdjęcie z CV) użytkownik wycina ręcznie narzędziem „Zaznacz obszar” (§7.4). Nie przywracaj trybu pełnego bez wyraźnej prośby właściciela.
 > Referencja wizualna UI: `docs/ui-reference/ui-reference-v1.png` (patrz §7.1). Jeśli pliku nie ma w repozytorium, poproś właściciela o dodanie go przed etapem 3.
 
 ---
 
 ## 0. Zasady twarde (nie negocjuj ich, nawet jeśli wydaje się to wygodne)
 
-1. **Zero ruchu sieciowego w aplikacji.** Kod aplikacji nigdy nie łączy się z internetem. Żadnej telemetrii, sprawdzania aktualizacji, raportów błędów, linków otwieranych w przeglądarce ani pobierania modeli w czasie działania. Pobieranie modeli robi osobny skrypt deweloperski (`scripts/fetch_models.py`), którego aplikacja nie zawiera.
+1. **Zero ruchu sieciowego w aplikacji.** Kod aplikacji nigdy nie łączy się z internetem. Żadnej telemetrii, sprawdzania aktualizacji, raportów błędów, linków otwieranych w przeglądarce ani pobierania czegokolwiek w czasie działania.
 2. **Dokumenty użytkownika są wrażliwe (RODO).** Nigdy nie loguj treści dokumentów ani rozpoznanego tekstu. Logi zawierają tylko metadane (rozmiar, liczba stron, czas, kod błędu), **bez nazw plików**.
 3. **Dane testowe i przykłady w UI tylko syntetyczne lub fikcyjne.** Nie proś o prawdziwe dokumenty, nie wgrywaj ich do repozytorium ani do sesji. Dane z referencji UI (np. fikcyjne CV) służą wyłącznie jako makieta wyglądu. Fixtures generuje skrypt (§9).
 4. **Zależności:** tylko licencje permisywne (MIT, BSD, Apache-2.0, MPL-2.0, ISC) oraz LGPL dla bibliotek dynamicznie linkowanych (PySide6). **Nie dodawaj** bibliotek GPL/AGPL (np. PyMuPDF, Surya/Marker) bez wyraźnej zgody właściciela. Przed dodaniem nowej zależności zapisz w PR jej licencję i powód.
 5. **Małe PR-y.** Jeden etap z §10 = jeden lub kilka małych PR-ów. Nie łącz refaktoru z nową funkcją. Nie pushuj bezpośrednio do `main`.
-6. **Nie zgaduj, sprawdzaj.** Biblioteki i ich API zmieniają się szybko. Przed użyciem Docling, Tesseract, PySide6 itd. sprawdź aktualną dokumentację i przypnij wersje w `pyproject.toml`.
+6. **Nie zgaduj, sprawdzaj.** Biblioteki i ich API zmieniają się szybko. Przed użyciem Tesseracta, PySide6, pypdfium2 itd. sprawdź aktualną dokumentację i przypnij wersje w `pyproject.toml`.
 7. **UI ma odpowiadać referencji (§7).** Odstępstwa są dozwolone tylko wtedy, gdy wynikają z zasad 0.1–0.3 lub z ograniczeń technicznych, i muszą być opisane w PR.
 8. **Komunikaty dla użytkownika po polsku**, kod, nazwy i komentarze techniczne po angielsku.
 
@@ -26,18 +26,16 @@
 
 **Kontekst projektu:** użytek osobisty jednego właściciela. Brak działu IT i firmowych polityk, a dane nie opuszczają aplikacji. Nie projektuj funkcji pod wdrożenia w organizacji (zarządzanie zgodami, centralna konfiguracja, podpisywanie pakietów na wymaganie IT).
 
-**Minimum (tryb podstawowy):** czysty OCR + wynik do skopiowania lub zapisania jako plik.
-
-**Maksimum (tryb pełny):** to samo + odtworzona struktura dokumentu (nagłówki, listy, tabele, obrazy), eksport do edytowalnego **DOCX** i wyciągnięcie obrazów do osobnego folderu.
+**Zakres:** czysty OCR + wynik do skopiowania albo zapisania jako plik (TXT, edytowalny DOCX, PDF z warstwą tekstową, Markdown, HTML). Fragment strony (np. zdjęcie) użytkownik wycina ręcznie i kopiuje lub zapisuje jako obraz.
 
 ### Scenariusze (akceptacyjne)
-1. **CV (JPG/PDF)** → edytowalny tekst + opcjonalnie struktura (DOCX).
-2. **Faktura, formularz** → tekst + tabele (DOCX/PDF).
+1. **CV (JPG/PDF)** → edytowalny tekst (DOCX); zdjęcie wycięte narzędziem „Zaznacz obszar”.
+2. **Faktura, formularz** → tekst (DOCX, PDF z warstwą tekstową).
 3. **Skan umowy (wielostronicowy PDF)** → PDF z warstwą tekstową oraz tekst.
 4. **Praca z danymi wrażliwymi** → brak połączeń sieciowych, widoczny znacznik offline, brak śladów dokumentów po zamknięciu aplikacji.
 
 ### Poza zakresem (v1)
-Pismo odręczne (słaby punkt wszystkich otwartych narzędzi), wierne odwzorowanie wyglądu strony 1:1 (układ wielokolumnowy i pozycjonowanie mogą wymagać ręcznej poprawki), edycja bloków dokumentu w aplikacji (patrz §13), wykrywanie języka dokumentu, synchronizacja z chmurą.
+Pismo odręczne (słaby punkt wszystkich otwartych narzędzi), wierne odwzorowanie wyglądu strony 1:1, odtwarzanie struktury dokumentu (nagłówki, tabele) i automatyczne wyciąganie obrazów (usunięty tryb pełny), wykrywanie języka dokumentu, synchronizacja z chmurą.
 
 **Języki dokumentów:** polski i angielski (pol+eng). Architektura ma pozwalać dodać kolejne.
 
@@ -47,42 +45,37 @@ Pismo odręczne (słaby punkt wszystkich otwartych narzędzi), wierne odwzorowan
 
 - Pojedynczy użytkownik (właściciel) na własnym komputerze. Mimo to nie wymagaj uprawnień administratora ani instalacji sterowników czy usług, jeśli nie jest to konieczne (prostsza instalacja i mniejsze ryzyko).
 - System docelowy (ustalone, §14): **Windows** — głównie proste laptopy biurowe (np. Lenovo ThinkBook, bez dedykowanego GPU), rzadziej komputer stacjonarny z dedykowaną kartą graficzną. Pierwszy pakiet budujemy dla Windows; kod pozostaje wieloplatformowy (testy i CI także na Linuksie).
-- Brak GPU nie może blokować pracy. Tryb podstawowy musi działać na samym CPU, a tryb pełny musi być używalny na CPU słabego laptopa (choć wolniej). GPU to opcjonalne przyspieszenie trybu pełnego.
+- Brak GPU nie może blokować pracy: wszystko działa na samym CPU słabego laptopa.
 
 ---
 
 ## 3. Architektura
 
-Przepływ danych jest liniowy i oparty na wspólnym modelu wyniku, żeby eksportery i UI były wspólne dla obu trybów:
+Przepływ danych jest liniowy i oparty na wspólnym modelu wyniku, niezależnym od silnika OCR:
 
 ```
 Plik wejściowy (PDF / obraz / TIFF wielostronicowy)
    → Loader (strony jako obrazy)
    → Preprocess (prostowanie, odszumianie, kontrast)
-   → Silnik (OCR podstawowy LUB analiza struktury)
-   → DocumentModel (strony → bloki → linie, obrazy)
-   → Eksportery (TXT, DOCX, PDF z warstwą tekstową, MD, HTML, folder obrazów)
+   → Silnik OCR (Tesseract)
+   → DocumentModel (strony → bloki → linie)
+   → Eksportery (TXT, DOCX, PDF z warstwą tekstową, MD, HTML)
 ```
 
 ### DocumentModel (neutralny, niezależny od silnika)
-- `Document`: lista `Page`, metadane (liczba stron, język OCR, tryb, średnia pewność). **Bez nazwy pliku w logach.**
-- `Page`: numer, rozmiar, lista `Block`.
-- `Block`: `type` (`paragraph | heading | list_item | table | figure | caption`), `text`, `lines` (lista linii z pozycjami, potrzebna do widoku „Oryginalny układ"), `bbox` (X, Y, szerokość, wysokość), `confidence` (0–1 lub `None`, jeśli silnik nie podaje), `level` (dla nagłówków), `table` (siatka komórek, dla typu `table`), `image_ref` (dla `figure`).
-- **Widok „Sekcje"** (potrzebny oknu struktury) jest wyliczany z bloków: nagłówek + kolejne bloki do następnego nagłówka tego samego lub wyższego poziomu. Nie jest przechowywany w modelu.
-- Tryb podstawowy wypełnia bloki `paragraph` z liniami. Tryb pełny wypełnia wszystkie typy.
+- `Document`: lista `Page`, metadane (liczba stron, język OCR, średnia pewność). **Bez nazwy pliku w logach.**
+- `Page`: numer, rozmiar, rozdzielczość, lista `Block`.
+- `Block`: `type` (`paragraph`; kolejny silnik może dodać typy), `text`, `lines` (lista linii z pozycjami, potrzebna do widoku „Oryginalny układ"), `bbox` (X, Y, szerokość, wysokość), `confidence` (0–1 lub `None`, jeśli silnik nie podaje).
 
-### Interfejsy silników (wymienialne)
+### Interfejs silnika (wymienialny)
 ```python
 class OcrEngine(Protocol):
-    def recognize(self, image: Image, lang: str) -> PageResult: ...
-
-class StructureEngine(Protocol):
-    def analyze(self, path: Path, lang: str) -> Document: ...
+    def recognize(self, image: Image, lang: str) -> Page: ...
 ```
-Nowy silnik = nowa klasa + wpis w rejestrze. UI i eksportery nie wiedzą, który silnik jest pod spodem.
+Nowy silnik = nowa klasa spełniająca `OcrEngine`. UI i eksportery nie wiedzą, który silnik jest pod spodem.
 
 ### Pipeline i postęp
-Pipeline emituje zdarzenia: `etap` (`loading | preprocessing | ocr | layout | export`), `strona`, `procent`, oraz możliwość anulowania. Szacowany czas pozostały liczony z ruchomej średniej czasu na stronę; dopóki nie ma danych, UI pokazuje „Szacowanie…".
+Pipeline emituje zdarzenia: `etap` (`loading | preprocessing | ocr | export`), `strona`, `procent`, oraz możliwość anulowania. Szacowany czas pozostały liczony z ruchomej średniej czasu na stronę; dopóki nie ma danych, UI pokazuje „Szacowanie…".
 
 ---
 
@@ -90,13 +83,12 @@ Pipeline emituje zdarzenia: `etap` (`loading | preprocessing | ocr | layout | ex
 
 | Obszar | Wybór | Uzasadnienie / uwagi |
 |---|---|---|
-| Język | Python 3.12+ | szybki rozwój, dojrzały ekosystem OCR (3.12, bo NumPy 2.5 nie wspiera już 3.11) |
+| Język | Python 3.12+ | szybki rozwój, dojrzały ekosystem OCR (3.12, bo NumPy 2.5 nie wspiera już 3.11); pakiet Windows budowany na 3.12 |
 | UI | **PySide6 (Qt 6)** | natywny wygląd, w pełni offline, drag & drop; LGPL — linkuj dynamicznie |
-| OCR podstawowy | **Tesseract 5** (`pol`, `eng`) przez `pytesseract` lub `tesserocr` | Apache-2.0, CPU; binarka i dane językowe dołączane do instalatora; pewność na poziomie słów |
-| Struktura (tryb pełny) | **Docling** (IBM) | MIT; układ, tabele, obrazy; **sprawdź w bieżącej dokumentacji**: tryb offline (`artifacts_path`), wybór silnika OCR (Tesseract), natywny eksport |
+| OCR | **Tesseract 5** (`pol`, `eng`), binarka wywoływana bezpośrednio (obraz przez stdin) | Apache-2.0, CPU; binarka i dane językowe dołączane do pakietu; pewność na poziomie słów |
 | Renderowanie PDF | **pypdfium2** | permisywna licencja; **nie używaj PyMuPDF (AGPL)** |
 | Obróbka obrazu | Pillow + OpenCV (headless) | prostowanie, odszumianie, kontrast |
-| DOCX | **python-docx** | MIT; składanie dokumentu z `DocumentModel` |
+| DOCX | **python-docx** | MIT; składanie dokumentu z `DocumentModel` (akapity) |
 | PDF z warstwą tekstu | wyjście PDF z Tesseracta | unikamy OCRmyPDF/Ghostscript (AGPL) |
 | Ikony UI | SVG z biblioteki o permisywnej licencji (np. Lucide — ISC, Tabler — MIT; **zweryfikuj licencję i dołącz jej tekst**) | skalowalne, kolorowane z motywu |
 | Metryka jakości | `rapidfuzz` lub `jiwer` | CER/WER w testach |
@@ -108,32 +100,23 @@ Jeśli któraś propozycja okaże się nieprzydatna (instalacja, licencja, jako�
 
 ---
 
-## 5. Tryby pracy
+## 5. Przetwarzanie
 
-> Tryb pełny usunięty 14.10.2026 (patrz nota na początku pliku). Poniższy opis trybu pełnego jest historyczny.
-
-### Tryb podstawowy (zawsze dostępny)
 - Loader → preprocess → Tesseract (pol+eng) → bloki `paragraph` z liniami.
-- Wyjścia: tekst do skopiowania, **TXT**, **PDF z warstwą tekstową**, **DOCX** (same akapity), prosty **Markdown** i **HTML** (akapity).
+- Wyjścia: tekst do skopiowania, **TXT**, **PDF z warstwą tekstową**, **DOCX**, **Markdown** i **HTML** (akapity; podział linii w akapicie zachowany).
+- Oczekiwania wobec DOCX: **czysty, edytowalny dokument**, nie kopia 1:1 wyglądu strony.
 - Brak dodatkowych modeli poza danymi Tesseracta. Musi działać na słabym komputerze.
-
-### Tryb pełny (opcjonalny, wymaga dołączonych modeli)
-- Docling (lokalne modele) → `DocumentModel` z nagłówkami, listami, tabelami i obrazami.
-- Wyjścia: wszystko z trybu podstawowego + **DOCX ze strukturą** (nagłówki jako style `Heading 1–N`, prawdziwe tabele, obrazy osadzone), folder `obrazy/`, pełny **Markdown** i **HTML**, zakładka **Obrazy**, okno **Struktura dokumentu**.
-- Jeśli modele nie są dostępne, aplikacja wyłącza opcję „Pełny" z jasnym wyjaśnieniem (podpowiedź przy opcji), a nie zgłasza błędu.
-- Oczekiwania wobec DOCX: **czysty, edytowalny dokument**, nie kopia 1:1 wyglądu strony. Powiedz o tym użytkownikowi w opisie trybu.
-- Opcja „Zachowaj strukturę (tryb pełny)" (§7.3, strefa 6) steruje zawartością eksportu: wyłączona = eksport jako czysty tekst (akapity) nawet w trybie pełnym.
 
 ---
 
 ## 6. Offline i prywatność (wymagania i weryfikacja)
 
 ### Wymagania
-1. **Strażnik sieci (`netguard`)** uruchamiany przy starcie procesu: blokuje wszystkie połączenia poza pętlą zwrotną (podmiana `socket.socket.connect`, `socket.create_connection`, `socket.getaddrinfo`). Próba połączenia = wyjątek i wpis w logu (bez treści). Wyłączany wyłącznie zmienną `LOKALOCR_ALLOW_NET=1` w skryptach deweloperskich, nigdy w aplikacji.
-2. Zmienne środowiskowe ustawiane na starcie: `HF_HUB_OFFLINE=1`, `TRANSFORMERS_OFFLINE=1` i odpowiedniki wymagane przez wybrane biblioteki (sprawdź dokumentację).
-3. Zakaz importu bibliotek sieciowych w kodzie aplikacji (`requests`, `httpx`, `urllib3`, `aiohttp`) egzekwowany regułą ruff (`banned-api`) i testem.
-4. Modele: tylko z lokalnego folderu `models/` dołączonego do instalatora. `scripts/fetch_models.py` pobiera je na maszynie z internetem, weryfikuje sumy kontrolne i zapisuje do `models/`.
-5. **Żadnych śladów dokumentów po zamknięciu:** kolejka plików i miniatury istnieją tylko w pamięci albo w folderze tymczasowym sprzątanym po zamknięciu i przy starcie. Aplikacja **nie ma** listy „ostatnio otwarte", historii ani zapisanej kolejki. Pliki wynikowe zapisujemy tylko tam, gdzie wskaże użytkownik.
+1. **Strażnik sieci (`netguard`)** uruchamiany przy starcie procesu: blokuje wszystkie połączenia poza pętlą zwrotną (podmiana `socket.socket.connect`/`connect_ex`/`sendto`/`sendmsg`, `socket.create_connection`, `socket.getaddrinfo`/`gethostbyname`). Próba połączenia = wyjątek i wpis w logu (bez treści). Wyłączany wyłącznie zmienną `LOKALOCR_ALLOW_NET=1` w skryptach deweloperskich, nigdy w aplikacji.
+2. **Kod natywny** (nie przechodzi przez `socket`): Tesseract dostaje obraz wyłącznie przez stdin (nigdy ścieżkę ani adres URL), PDFium nie ma funkcji sieciowych, a moduły sieciowe Qt (QtNetwork, WebEngine, WebSockets, wtyczki TLS) nie są importowane ani dołączane do pakietu — CI sprawdza zawartość pakietu.
+3. Zakaz importu bibliotek i modułów sieciowych w kodzie aplikacji (`requests`, `httpx`, `urllib3`, `aiohttp`, `urllib.request`, `http.*`, `ftplib`, `smtplib`, `socketserver`, `xmlrpc`, `webbrowser`, `PySide6.QtNetwork`, `PySide6.QtWebEngine*`, `PySide6.QtWebSockets`) egzekwowany regułą ruff (`banned-api`), testem statycznym i testem w czasie działania.
+4. Eksport HTML zawiera politykę `Content-Security-Policy: default-src 'none'`: przeglądarka nie pobierze niczego przy otwieraniu pliku.
+5. **Żadnych śladów dokumentów po zamknięciu:** kolejka plików i miniatury istnieją tylko w pamięci albo w folderze tymczasowym sprzątanym po zamknięciu i przy starcie. Aplikacja **nie ma** listy „ostatnio otwarte", historii ani zapisanej kolejki. Okna wyboru plików to okna Qt (nie natywne okno Windows, które dopisuje pliki do „Ostatnich elementów” systemu), a historia folderów zapisywana przez Qt jest przywracana po każdym oknie (`ui/file_dialogs.py`). Pliki wynikowe zapisujemy tylko tam, gdzie wskaże użytkownik.
 6. Schowek: kopiowanie tekstu to świadoma akcja użytkownika. W ustawieniach opcja „wyczyść schowek po X minutach" (domyślnie wyłączona) i krótka informacja, że menedżery schowka mogą zachować kopię.
 7. Konfiguracja (plik w katalogu konfiguracyjnym użytkownika) nie zawiera nazw dokumentów ani ścieżek plików źródłowych (dozwolona ostatnio wybrana ścieżka folderu wyjściowego, jeśli użytkownik tego chce).
 8. „Pomoc" i „O programie" korzystają wyłącznie z dokumentów dołączonych do aplikacji. Żadnych odnośników otwieranych w przeglądarce (adresy mogą występować jedynie jako zwykły, nieklikalny tekst).
@@ -141,7 +124,8 @@ Jeśli któraś propozycja okaże się nieprzydatna (instalacja, licencja, jako�
 ### Weryfikacja (testy obowiązkowe)
 - Test: próba połączenia z zewnętrznym adresem → wyjątek.
 - Test: pełne przetworzenie przykładowego dokumentu przy aktywnym `netguard` kończy się sukcesem.
-- Test: statyczne sprawdzenie, że w `src/` nie ma zakazanych importów.
+- Test: statyczne sprawdzenie, że w `src/` nie ma zakazanych importów, oraz że podczas przetwarzania nie ładuje się żaden moduł sieciowy.
+- Test: okna wyboru plików nie są natywne i nie zostawiają historii folderów.
 - Test: po zamknięciu i sprzątaniu folder tymczasowy jest pusty.
 - Ręcznie przed wydaniem: uruchomienie na maszynie bez sieci i przy zablokowanym ruchu wychodzącym w zaporze + obserwacja ruchu (`docs/offline-checklist.md` — krótka lista kroków dla właściciela).
 
@@ -151,14 +135,12 @@ Jeśli któraś propozycja okaże się nieprzydatna (instalacja, licencja, jako�
 
 ### 7.1 Referencja i decyzje projektowe
 
-Referencja: `docs/ui-reference/ui-reference-v1.png` (wersja 1.0 „projekt referencyjny"). Opisuje 9 elementów: okno główne ze strefami 1–6, okno struktury, ustawienia i okno postępu. **Przejmujemy układ, hierarchię i styl.** Poniżej decyzje tam, gdzie referencja jest niejednoznaczna albo koliduje z założeniami projektu:
+Referencja: `docs/ui-reference/ui-reference-v1.png` (wersja 1.0 „projekt referencyjny"). Opisuje 9 elementów: okno główne ze strefami 1–6, okno struktury, ustawienia i okno postępu. **Przejmujemy układ, hierarchię i styl** okna głównego i ustawień (okna struktury i karty *Obrazy* nie ma — usunięty tryb pełny). Poniżej decyzje tam, gdzie referencja jest niejednoznaczna albo koliduje z założeniami projektu:
 
 | Temat | Referencja | Decyzja |
 |---|---|---|
-| Karty „Tekst / Podgląd / Obrazy" | Przy aktywnej karcie „Tekst" widać jednocześnie podgląd strony i tekst; znaczenie kart jest niejasne | **Karty przełączają widok obszaru roboczego:** *Tekst* = podział: podgląd oryginału + wynik tekstowy (domyślny); *Podgląd* = podgląd na całą szerokość z nakładką bloków; *Obrazy (N)* = galeria wyciągniętych obrazów (tryb pełny). |
-| Struktura dokumentu | Osobne okno otwierane na żądanie | **Tak, osobne okno niemodalne**, otwierane przyciskiem „Struktura" przy kartach (aktywny w trybie pełnym). Nie jest kartą. |
+| Karty „Tekst / Podgląd / Obrazy" | Przy aktywnej karcie „Tekst" widać jednocześnie podgląd strony i tekst; znaczenie kart jest niejasne | **Dwie karty przełączają widok obszaru roboczego:** *Tekst* = podział: podgląd oryginału + wynik tekstowy (domyślny); *Podgląd* = podgląd na całą szerokość z nakładką bloków. Karty *Obrazy* i okna struktury nie ma. |
 | Okno postępu | „Opcjonalne — może być w głównym oknie" | **W v1 postęp jest w głównym oknie:** pasek w elemencie kolejki i w panelu wyniku. Osobne okno nie jest w v1 potrzebne. Rozwijane „Szczegóły" pokazuje etapy (bez treści dokumentu). |
-| Pola w oknie struktury (Typ, Tekst, Poziom, współrzędne) | Wyglądają na edytowalne | **W v1 tylko do odczytu.** Edycja bloków jest w backlogu (§13). Trzy przełączniki przy współrzędnych zastępuje **jeden** przełącznik „Pokaż ramkę bloku w podglądzie". |
 | „Język: polski (98%)" w pasku stanu | Sugeruje automatyczne wykrywanie języka | **Wykrywanie języka poza zakresem v1.** Pasek stanu pokazuje język OCR wybrany przez użytkownika i średnią **Pewność OCR** (jeśli silnik ją podaje, inaczej „—"). |
 | Pasek tytułu | Własny, narysowany | **Natywna ramka okna systemu** + nagłówek aplikacji wewnątrz okna (lepsza dostępność i stabilność). |
 | Ikony | Pliki PNG | **SVG** dla ikon UI (ostrość przy skalowaniu, kolor z motywu); PNG/ICO/ICNS tylko dla ikony aplikacji. |
@@ -169,7 +151,7 @@ Dane na makiecie (CV „Jan Kowalski", zdjęcie, numery) są **fikcyjne** — ni
 ### 7.2 Zasady ogólne
 - Spokojny, nowoczesny wygląd, bez zbędnych ozdób. Ścieżka główna ma być oczywista: *przeciągnij plik → zobacz wynik → skopiuj albo zapisz*.
 - **Brak okien przy starcie** (żadnych kreatorów, okien powitalnych ani zgód). Ewentualna jednorazowa podpowiedź — wbudowana w okno, nie modalna.
-- Okna: **Główne** (do implementacji w pierwszej kolejności), **Struktura dokumentu** (na żądanie), **Ustawienia** (modalne), **Pomoc/O programie** (lokalne). Brak innych okien.
+- Okna: **Główne**, **Ustawienia** (modalne), **Pomoc** (lokalna). Brak innych okien.
 - Praca w tle: UI nigdy się nie zawiesza; przetwarzanie w osobnym wątku lub procesie, z możliwością anulowania.
 
 ### 7.3 Okno główne — strefy
@@ -186,43 +168,39 @@ Numeracja zgodna z referencją.
 
 **Strefa 2 — szybkie ustawienia przetwarzania (pod kolejką).**
 - „Język OCR": lista (Polski + Angielski (pol+eng), Polski, Angielski).
-- „Tryb pracy": **Podstawowy** / **Pełny** (przełącznik radiowy; „Pełny" wyszarzony z podpowiedzią, jeśli brak modeli).
 - „Automatyczna obróbka obrazu": przełącznik (szczegóły w ustawieniach).
 
-**Strefa 3 — karty widoku:** *Tekst*, *Podgląd*, *Obrazy (N)* (zgodnie z §7.1). Karta *Obrazy* jest ukryta lub wyłączona w trybie podstawowym. Obok kart przycisk **„Struktura"** (tryb pełny).
+**Strefa 3 — karty widoku:** *Tekst*, *Podgląd* (zgodnie z §7.1).
 
 **Strefa 4 — podgląd strony (środek).**
-- Pasek narzędzi: poprzednia/następna strona, pole „1 / N", pomniejsz/powiększ i wartość „100%", dopasuj do okna, **rączka** (przesuwanie), **lupa**, **obrót w lewo/prawo**, **prostuj** (ręczne uruchomienie prostowania dla strony).
+- Pasek narzędzi: poprzednia/następna strona, pole „1 / N", pomniejsz/powiększ i wartość „100%", dopasuj do okna, **rączka** (przesuwanie), **lupa**, **zaznacz obszar** (§7.4), **obrót w lewo/prawo**, **prostuj** (ręczne uruchomienie prostowania dla strony).
 - Strona wyświetlana na ciemnoszarym tle; przewijanie i powiększanie myszą i gestami.
-- W karcie *Podgląd* opcjonalna nakładka ramek bloków (po zaznaczeniu bloku w oknie struktury podświetla się jego ramka).
+- W karcie *Podgląd* nakładka ramek rozpoznanych bloków.
 
 **Strefa 5 — wynik tekstowy (prawy panel).**
 - Przełącznik: **„Oryginalny układ"** (zachowuje podział na linie i przybliżone położenie; czcionka równoszerokościowa) / **„Tekst uproszczony"** (scalone akapity).
 - Pole „**Szukaj w tekście…**" z przyciskami następny/poprzedni wynik i podświetleniem trafień; menu „⋯" (np. zaznacz wszystko, zawijanie wierszy).
 - Ikona kopiowania w rogu pola tekstu (kopiuje zawartość widocznego widoku).
 - Pasek stanu pod tekstem: „**Strona 1 z N • Znaleziono 324 słowa • Język OCR: polski • Pewność OCR: 98%**" oraz przycisk główny „**Kopiuj tekst**".
-- W czasie przetwarzania panel pokazuje pasek postępu, nazwę etapu („Rozpoznawanie tekstu (OCR)…", „Analiza układu…", „Eksport…"), „Szacowany czas: około N sekund" i przycisk „**Anuluj**" (czerwona obwódka).
+- W czasie przetwarzania panel pokazuje pasek postępu, nazwę etapu („Rozpoznawanie tekstu (OCR)…", „Eksport…"), „Szacowany czas: około N sekund" i przycisk „**Anuluj**" (czerwona obwódka).
 
 **Strefa 6 — pasek akcji (dół).**
 - Rozwijany przycisk główny „**Zapisz jako DOCX ▾**" (menu: DOCX, TXT, PDF z tekstem, Markdown, HTML).
-- Przyciski szybkiego zapisu: **TXT**, **PDF (z tekstem)**, **Markdown**, **HTML**; oraz „**Otwórz folder z obrazami (N)**" (wyłączony w trybie podstawowym, z podpowiedzią).
-- „Opcje wyniku (dla tego dokumentu)": pole **„Czysty tekst (zawsze)"** (zaznaczone, nieedytowalne) i **„Zachowaj strukturę (tryb pełny)"** (aktywne tylko w trybie pełnym; ikona informacji z krótkim wyjaśnieniem).
+- Przyciski szybkiego zapisu: **TXT**, **PDF (z tekstem)**, **Markdown**, **HTML**.
 - Zapis: okno wyboru lokalizacji (lub domyślny folder wyjściowy z ustawień). Nazwa domyślna `<nazwa>_ocr.<rozszerzenie>`. Nigdy nie nadpisuj plików bez potwierdzenia. Po zapisie krótkie powiadomienie w oknie z akcją „Pokaż w folderze".
 
-### 7.4 Okno „Struktura dokumentu" (tryb pełny, niemodalne)
-- Tytuł: „Struktura dokumentu – <nazwa pliku>".
-- **Lewy panel — drzewo:** Strona → Nagłówek, Akapit, **Sekcja: <tytuł>** (z zagnieżdżonymi akapitami, listami, tabelami), Obraz. Ikony typów, liczba elementów w nawiasie (np. „Akapit (2)", „Lista (4)").
-- **Środek — „Podgląd bloku":** wycinek strony z zaznaczonym blokiem (obraz dla bloków typu obraz).
-- **Prawy panel — „Właściwości bloku" (tylko do odczytu w v1):** Typ, Tekst, Poziom (np. H1), Współrzędne (X, Y, Szer., Wys.), przełącznik „Pokaż ramkę bloku w podglądzie", **Pewność rozpoznania** (pasek i wartość w %, a gdy brak danych: „—").
-- Zaznaczenie bloku w drzewie przewija i podświetla go w głównym oknie.
+### 7.4 Wycinanie fragmentu strony
+- Narzędzie **„Zaznacz obszar”** na pasku podglądu: prostokąt przeciągnięty myszą na stronie.
+- Po puszczeniu przycisku menu: *Kopiuj zaznaczenie jako obraz* / *Zapisz zaznaczenie jako obraz…* (PNG lub JPG). Fragment jest wycinany w pełnej rozdzielczości (strony PDF w 300 dpi), nie z podglądu.
+- Prawy przycisk na zaznaczeniu otwiera menu ponownie; Esc usuwa zaznaczenie.
 
 ### 7.5 Okno ustawień (modalne, panel kategorii po lewej)
-- **OCR:** język domyślny, tryb domyślny, status modeli trybu pełnego (zainstalowane / brak) i danych językowych.
+- **OCR:** język domyślny, stan silnika i danych językowych.
 - **Przetwarzanie:** automatyczna obróbka obrazu (wł./wył.), przełączniki **Prostowanie (deskew)**, **Usuwanie szumów**, **Poprawa kontrastu**; rozdzielczość renderowania PDF (np. 200–300 dpi); liczba wątków (domyślnie auto).
-- **Wyjście:** folder wyjściowy („pytaj za każdym razem" jako domyślne), schemat nazwy pliku, domyślny format zapisu, domyślnie „Zachowaj strukturę", folder tymczasowy, czyszczenie schowka po X minutach.
+- **Wyjście:** folder wyjściowy („pytaj za każdym razem" jako domyślne), schemat nazwy pliku, domyślny format zapisu, folder tymczasowy, czyszczenie schowka po X minutach.
 - **Wygląd:** motyw (jasny / ciemny / systemowy), rozmiar czcionki, język interfejsu (polski; struktura gotowa na kolejne).
 - **Zaawansowane:** poziom logowania (logi bez treści i bez nazw plików), „Otwórz folder logów", „Wyczyść pliki tymczasowe", „Przywróć ustawienia domyślne". **Brak jakichkolwiek ustawień sieciowych i aktualizacji.**
-- **O programie:** wersja, wersje silników i modeli, lista licencji komponentów (z dołączonych plików), informacja „Aplikacja nie wykonuje połączeń sieciowych".
+- **O programie:** wersja, wersja silnika OCR, lista licencji komponentów (z dołączonych plików), informacja „Aplikacja nie wykonuje połączeń sieciowych".
 - Zmiany zatwierdzane przyciskami OK/Anuluj albo zapisywane natychmiast (jedno z dwóch, spójnie dla całego okna).
 
 ### 7.6 Stany i komunikaty błędów
@@ -235,7 +213,6 @@ Numeracja zgodna z referencją.
 | PDF chroniony hasłem | „Plik jest chroniony hasłem. Usuń zabezpieczenie i spróbuj ponownie." |
 | Uszkodzony plik | „Nie udało się otworzyć pliku. Może być uszkodzony." |
 | Nieobsługiwany format | „Ten format nie jest obsługiwany. Użyj PDF, PNG, JPG lub TIFF." |
-| Brak modeli trybu pełnego | „Tryb pełny jest niedostępny: brak lokalnych modeli. Użyj trybu podstawowego." |
 | Brak danych językowych | „Brak danych językowych dla wybranego języka." |
 | Za mało pamięci / zbyt duży plik | „Plik jest zbyt duży do przetworzenia. Spróbuj niższej rozdzielczości." |
 | Wynik pusty | „Nie znaleziono tekstu. Sprawdź jakość skanu lub język OCR." |
@@ -267,16 +244,15 @@ Ikony UI jako **SVG** w `src/lokalocr/ui/resources/icons/`, kolorowane z tokenó
 
 | Zasób | Zastosowanie |
 |---|---|
-| `app_icon_256` (+ `.ico`, `.icns`) | ikona aplikacji, nagłówek, okna |
-| `file_pdf`, `file_image`, `file_docx` | typ pliku w kolejce; ikony formatów zapisu: `file_txt`, `file_markdown`, `file_html` |
-| `status_ok`, `status_processing` (animowana), `status_error`, `status_wait` | statusy elementów kolejki |
-| `btn_add` | dodawanie plików |
-| `icon_settings`, `icon_help`, `icon_offline` | nagłówek i znacznik offline |
-| `icon_copy`, `icon_search`, `icon_more`, `icon_info`, `icon_close`, `icon_check`, `icon_clear` | ogólne akcje |
-| `icon_prev`, `icon_next`, `icon_zoom_in`, `icon_zoom_out`, `icon_fit`, `icon_hand`, `icon_magnifier`, `icon_rotate_left`, `icon_rotate_right`, `icon_deskew` | pasek narzędzi podglądu |
-| `icon_save`, `icon_folder_open` | zapis i otwarcie folderu obrazów |
-| `icon_tab_text`, `icon_tab_preview`, `icon_tab_images`, `icon_structure` | karty i przycisk struktury |
-| `node_page`, `node_heading`, `node_paragraph`, `node_section`, `node_list`, `node_table`, `node_image` | drzewo struktury |
+| `app_icon_256` (+ `.ico`) | ikona aplikacji, nagłówek, okna |
+| `file_drop`, `btn_add` | pole upuszczania i dodawanie plików |
+| `file_pdf`, `file_image` | typ pliku w kolejce |
+| `file_txt`, `file_markdown`, `file_html`, `icon_save` | przyciski zapisu |
+| `status_ok`, `status_error`, `status_wait` | statusy elementów kolejki |
+| `icon_settings`, `icon_help` | nagłówek |
+| `cat_ocr`, `cat_processing`, `cat_output`, `cat_appearance`, `cat_advanced`, `cat_about` | kategorie ustawień |
+| `icon_copy`, `icon_more`, `icon_tab_text` | wynik tekstowy |
+| `icon_prev`, `icon_next`, `icon_zoom_in`, `icon_zoom_out`, `icon_fit`, `icon_hand`, `icon_magnifier`, `icon_crop`, `icon_rotate_left`, `icon_rotate_right`, `icon_deskew` | pasek narzędzi podglądu |
 
 W `THIRD_PARTY_NOTICES.md` zapisz źródło i licencję ikon (z dołączonym tekstem licencji).
 
@@ -285,17 +261,17 @@ W `THIRD_PARTY_NOTICES.md` zapisz źródło i licencję ikon (z dołączonym tek
 - Pełna nawigacja klawiaturą, widoczny fokus, podpowiedzi (tooltips) dla ikon, skalowanie czcionki zgodnie z ustawieniem systemu i skalowaniem DPI.
 
 ### 7.10 Teksty interfejsu
-Wszystkie napisy w jednym module (`ui/strings_pl.py` lub `tr()`), aby łatwo dodać inny język. Teksty z referencji (polskie) są wiążące, o ile nie kolidują z §6: „Upuść pliki tutaj", „Wybierz pliki…", „Kolejka plików", „Wyczyść", „Gotowe", „Oczekuje", „Przetwarzanie…", „Ustawienia szybkiego przetwarzania", „Język OCR", „Tryb pracy", „Podstawowy", „Pełny", „Automatyczna obróbka obrazu", „Tekst", „Podgląd", „Obrazy", „Oryginalny układ", „Tekst uproszczony", „Szukaj w tekście…", „Kopiuj tekst", „Zapisz jako DOCX", „Otwórz folder z obrazami", „Czysty tekst (zawsze)", „Zachowaj strukturę (tryb pełny)", „Struktura dokumentu", „Właściwości bloku", „Pewność rozpoznania", „Anuluj", „Szczegóły".
+Wszystkie napisy w jednym module (`ui/strings_pl.py` lub `tr()`), aby łatwo dodać inny język. Teksty z referencji (polskie) są wiążące, o ile nie kolidują z §6: „Upuść pliki tutaj", „Wybierz pliki…", „Kolejka plików", „Wyczyść", „Gotowe", „Oczekuje", „Przetwarzanie…", „Ustawienia szybkiego przetwarzania", „Język OCR", „Automatyczna obróbka obrazu", „Tekst", „Podgląd", „Oryginalny układ", „Tekst uproszczony", „Szukaj w tekście…", „Kopiuj tekst", „Zapisz jako DOCX", „Anuluj", „Szczegóły".
 
 ### 7.11 Wskazówki implementacyjne (Qt)
 - Okno główne: `QMainWindow`; trzy kolumny w `QSplitter` (kolejka | podgląd | wynik); karty widoku przez `QStackedWidget`/`QTabBar`.
 - Kolejka: `QListView` z własnym delegatem (miniatura, status, pasek postępu).
 - Podgląd: `QGraphicsView` + `QGraphicsPixmapItem`, nakładka ramek bloków jako elementy sceny; zoom i przesuwanie w widoku.
 - Wynik tekstowy: `QPlainTextEdit` (tylko do odczytu) z podświetleniem wyników wyszukiwania.
-- Struktura: `QTreeView` z modelem wyliczanym z `DocumentModel` (§3).
 - Ustawienia: `QDialog` z `QListWidget` kategorii i `QStackedWidget`.
 - Motyw: generowany z tokenów (QSS + `QPalette`); przełączanie jasny/ciemny bez restartu.
-- Praca w tle: wątek roboczy lub oddzielny proces z komunikacją przez sygnały; anulowanie musi przerywać pracę w rozsądnym czasie.
+- Praca w tle: wątki robocze z komunikacją przez sygnały; anulowanie musi przerywać pracę w rozsądnym czasie. Odśmiecanie Pythona (cyclic GC) działa tylko w wątku GUI (`ui/app.py`) — zwalnianie obiektów Qt w wątku roboczym kończy się awarią.
+- Okna wyboru plików tylko przez `ui/file_dialogs.py` (§6.5).
 - Przekazywanie danych między UI a pipeline tylko przez `DocumentModel` i zdarzenia postępu (§3).
 
 ---
@@ -303,37 +279,43 @@ Wszystkie napisy w jednym module (`ui/strings_pl.py` lub `tr()`), aby łatwo dod
 ## 8. Struktura repozytorium
 
 ```
-lokalocr/
+OCR_aplikacja/
 ├── CLAUDE.md                  # ten plik
+├── THIRD_PARTY_NOTICES.md     # licencje dołączonych komponentów
 ├── pyproject.toml             # przypięte wersje, ruff/mypy/pytest
 ├── src/lokalocr/
 │   ├── netguard.py            # blokada sieci (§6)
-│   ├── config.py
-│   ├── model.py               # DocumentModel (+ widok sekcji)
+│   ├── config.py  logsetup.py  logsafe.py  tempdir.py  errors.py  docs.py
+│   ├── model.py               # DocumentModel
 │   ├── loader.py              # PDF/obrazy → strony
 │   ├── preprocess.py
+│   ├── textview.py            # „Oryginalny układ” / „Tekst uproszczony”
 │   ├── engines/
-│   │   ├── base.py            # OcrEngine, StructureEngine
-│   │   ├── tesseract.py
-│   │   └── docling_engine.py
+│   │   ├── base.py            # OcrEngine
+│   │   └── tesseract.py
 │   ├── exporters/
-│   │   ├── txt.py  docx.py  pdf_text.py  markdown.py  html.py  images.py
+│   │   ├── common.py  txt.py  docx.py  pdf_text.py  markdown.py  html.py
 │   ├── pipeline.py            # etapy, postęp, anulowanie
 │   ├── cli.py                 # wiersz poleceń (testy, automatyzacja)
+│   ├── selftest.py            # test spakowanej aplikacji (--selftest)
 │   └── ui/
-│       ├── app.py  main_window.py  structure_window.py  settings_dialog.py
+│       ├── app.py  main_window.py  settings_dialog.py  help_window.py
+│       ├── file_dialogs.py  worker.py  queue_model.py  icons.py
 │       ├── theme.py  strings_pl.py  widgets/
 │       └── resources/ (icons/, app icon)
+├── packaging/                 # PyInstaller (spec, launchery)
 ├── scripts/
-│   ├── fetch_models.py        # jedyne miejsce z dostępem do sieci (dev)
-│   └── make_fixtures.py       # syntetyczne dokumenty testowe
+│   ├── check.py               # te same sprawdzenia co CI
+│   ├── check_licenses.py
+│   ├── make_fixtures.py       # syntetyczne dokumenty testowe
+│   └── measure_cer.py
 ├── tests/
 ├── docs/
 │   ├── ui-reference/ui-reference-v1.png
-│   ├── offline-checklist.md
-│   ├── dev-setup.md
+│   ├── offline-checklist.md  install-windows.md  dev-setup.md
+│   ├── quality/cer-baseline.md
 │   └── user-guide.md          # dołączany do aplikacji jako lokalna pomoc
-└── (CI i szablon PR zależnie od platformy git)
+└── .github/                   # CI (Linux + Windows), build pakietu, szablon PR
 ```
 
 ---
@@ -343,7 +325,7 @@ lokalocr/
 Pracujemy w chmurowym środowisku Claude Code z podpiętym repozytorium właściciela.
 
 - **Do sesji trafia wyłącznie kod.** Żadnych prawdziwych dokumentów, danych osobowych ani zrzutów z pracy.
-- Środowisko chmurowe może mieć ograniczony dostęp do sieci. Testy wymagające dużych modeli oznacz `@pytest.mark.models` i traktuj jako opcjonalne; pełne testy modeli właściciel uruchamia lokalnie.
+- Środowisko chmurowe może mieć ograniczony dostęp do sieci. Testy wymagające Tesseracta są oznaczone `@pytest.mark.tesseract`.
 - Zależności systemowe w środowisku testowym (Debian/Ubuntu, przykład): `tesseract-ocr`, `tesseract-ocr-pol`, `tesseract-ocr-eng`. Zapisz kroki w `docs/dev-setup.md`.
 - Testy UI: `QT_QPA_PLATFORM=offscreen` + pytest-qt. Zrzuty ekranu okien do przeglądu przez właściciela generuj w trybie offscreen na danych fikcyjnych.
 
@@ -363,22 +345,21 @@ Pracujemy w chmurowym środowisku Claude Code z podpiętym repozytorium właści
 **Etap 1 — Rdzeń podstawowy.** `loader` (PDF przez pypdfium2, PNG/JPG, wielostronicowy TIFF), `preprocess`, `engines/tesseract` (z liniami i pewnością), `DocumentModel`, eksport TXT, `make_fixtures.py`.
 *Akceptacja:* dokument syntetyczny → poprawny tekst, zapisany pomiar CER.
 
-**Etap 2 — CLI.** `lokalocr plik -o wynik --mode basic --lang pol+eng`.
+**Etap 2 — CLI.** `lokalocr plik -o wynik --lang pol+eng`.
 *Akceptacja:* przetwarzanie wsadowe folderu, kody wyjścia, test przy aktywnym `netguard`.
 
 **Etap 3 — Okno główne, szkielet.** Nagłówek ze znacznikiem offline, strefa 1 (upuszczanie, kolejka, statusy, menu elementu), strefa 2, strefa 5 (widoki tekstu, wyszukiwanie, „Kopiuj tekst", pasek stanu), zapis TXT, praca w tle z anulowaniem, postęp w kolejce i panelu wyniku.
 *Akceptacja:* testy pytest-qt; UI nie blokuje się przy dużym PDF; po zamknięciu brak śladów w folderze tymczasowym.
 
-**Etap 4 — Podgląd i eksport podstawowy.** Strefa 3 (karty), strefa 4 (podgląd z zoomem, obrotem, prostowaniem), strefa 6 (zapis DOCX z akapitów, PDF z warstwą tekstową, Markdown, HTML), opcje wyniku.
+**Etap 4 — Podgląd i eksport podstawowy.** Strefa 3 (karty), strefa 4 (podgląd z zoomem, obrotem, prostowaniem), strefa 6 (zapis DOCX z akapitów, PDF z warstwą tekstową, Markdown, HTML).
 *Akceptacja:* pliki otwierają się w Word/LibreOffice; tekst w PDF da się zaznaczać i wyszukiwać.
 
 **Etap 5 — Ustawienia, motywy, dopracowanie.** Okno ustawień (wszystkie kategorie), motywy jasny/ciemny z tokenów (§7.7), ikony SVG (§7.8), stany błędów (§7.6), skróty i dostępność (§7.9), lokalna pomoc i „O programie".
 *Akceptacja:* przegląd zrzutów ekranu przez właściciela względem referencji, kontrast AA.
 
-**Etap 6 — Tryb pełny** *(zrealizowany, a następnie usunięty decyzją właściciela 14.10.2026)*. `docling_engine` z lokalnymi modelami, mapowanie do `DocumentModel`, DOCX ze strukturą (style nagłówków, tabele, obrazy), folder `obrazy/`, pełny Markdown/HTML, karta *Obrazy*, okno *Struktura dokumentu* (tylko do odczytu). Włącz generowanie obrazów obiektów w Docling. Jeśli bieżąca wersja ma natywny eksport DOCX, porównaj jakość z własnym eksporterem i wybierz lepszy.
-*Akceptacja:* dokument z tabelą, listą i obrazem → DOCX z odpowiednimi elementami; działa przy aktywnym `netguard`.
+**Etap 6 — Tryb pełny (Docling).** Zrealizowany, a następnie usunięty decyzją właściciela (14.10.2026) — patrz nota na początku pliku. W zamian: ręczne wycinanie fragmentu strony (§7.4).
 
-**Etap 7 — Pakowanie i dokumentacja.** PyInstaller (one-folder) z dołączonym Tesseractem, danymi `pol`/`eng` i folderem `models/`, instrukcja instalacji offline, `docs/offline-checklist.md`, `docs/user-guide.md`. Pakiety PyInstaller bywają oznaczane przez antywirusy (fałszywe alarmy); podpisanie kodu jest opcjonalne i nie jest wymagane do użytku osobistego.
+**Etap 7 — Pakowanie i dokumentacja.** PyInstaller (one-folder) z dołączonym Tesseractem i danymi `pol`/`eng`, instrukcja instalacji offline, `docs/offline-checklist.md`, `docs/user-guide.md`. Pakiety PyInstaller bywają oznaczane przez antywirusy (fałszywe alarmy); podpisanie kodu jest opcjonalne i nie jest wymagane do użytku osobistego.
 *Akceptacja:* instalacja na czystej maszynie bez sieci, ręczny test z §6 wykonany.
 
 **Etap 8+ — Rozszerzenia** (§13).
@@ -407,12 +388,10 @@ Pracujemy w chmurowym środowisku Claude Code z podpiętym repozytorium właści
 
 ## 13. Rozszerzenia na później (backlog)
 
-Architektura (interfejsy silników, wspólny `DocumentModel`) ma ułatwiać dodawanie funkcji bez przebudowy:
+Architektura (interfejs silnika, wspólny `DocumentModel`) ma ułatwiać dodawanie funkcji bez przebudowy:
 
-- **Edycja bloków w oknie struktury** (zmiana typu, poziomu nagłówka, tekstu, z cofaniem) przed eksportem — pola istnieją już w układzie okna (tylko do odczytu w v1).
 - **Anonimizacja i maskowanie danych osobowych** (np. PESEL z kontrolą sumy, NIP, numery kont, e-maile) z podglądem przed zapisem. Szczególnie przydatne przy RODO.
 - **Wykrywanie języka dokumentu** (lokalna biblioteka o permisywnej licencji) i pokazywanie go w pasku stanu.
-- Eksport tabel do **XLSX/CSV**.
 - „Zapisz wszystko" dla całej kolejki i obserwowanie katalogu.
 - Osobne okno postępu dla długich zadań wsadowych (jak w referencji, element 9).
 - Lokalny, szyfrowany indeks przetworzonych dokumentów z wyszukiwaniem.
@@ -433,11 +412,7 @@ Każde rozszerzenie zaczyna się od krótkiej notatki w `docs/` (cel, ryzyko, li
 - Tryb pełny (Docling): **usunięty** (14.10.2026); aplikacja ma tylko tryb podstawowy, a pakiet Windows tylko wariant `basic`.
 
 **Do sprawdzenia w bieżącej dokumentacji przez agenta (nie zakładaj):**
-- Docling: praca offline z lokalnymi modelami, wybór Tesseracta jako silnika OCR, dostępność natywnego eksportu DOCX w bieżącej wersji.
-- Licencje wag modeli używanych przez Docling oraz danych językowych Tesseracta.
-- Najlepszy sposób dołączenia binarki Tesseracta do pakietu na docelowym systemie.
-- Licencja wybranej biblioteki ikon i obowiązek dołączenia jej tekstu.
-- Czy polskie dokumenty z diakrytykami osiągają akceptowalny CER w trybie podstawowym; jeśli nie, zaproponuj ulepszenia obróbki obrazu lub alternatywny silnik (z analizą licencji).
+- Przy aktualizacji Tesseracta lub PySide6: licencje, zachowanie offline (Tesseract ze stdin, brak QtNetwork w pakiecie) i wynik CER na zestawie syntetycznym (`docs/quality/cer-baseline.md`).
 
 **Ograniczenia, o których trzeba pamiętać:**
 - Pismo odręczne nie jest wspierane w v1.

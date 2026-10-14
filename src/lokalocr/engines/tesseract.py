@@ -1,4 +1,4 @@
-"""Basic-mode OCR via the Tesseract 5 command-line binary.
+"""OCR via the Tesseract 5 command-line binary.
 
 The image is piped through stdin and results come back on stdout, so no
 temporary copies of the document are written to disk (§6.5). The binary is

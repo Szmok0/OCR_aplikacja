@@ -36,7 +36,6 @@ from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
     QDialog,
-    QFileDialog,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -65,7 +64,7 @@ from lokalocr.exporters.txt import export_txt
 from lokalocr.loader import SUPPORTED_EXTENSIONS, detect_format
 from lokalocr.model import Document
 from lokalocr.pipeline import LANGUAGES, ProcessOptions, ProgressEvent
-from lokalocr.ui import icons, theme
+from lokalocr.ui import file_dialogs, icons, theme
 from lokalocr.ui import strings_pl as S
 from lokalocr.ui.help_window import HelpWindow
 from lokalocr.ui.queue_model import ITEM_ROLE, QueueItem, QueueModel, Status
@@ -428,7 +427,7 @@ class MainWindow(QMainWindow):
 
     def browse_files(self) -> None:
         patterns = " ".join(f"*{ext}" for ext in sorted(SUPPORTED_EXTENSIONS))
-        files, _ = QFileDialog.getOpenFileNames(
+        files = file_dialogs.open_file_names(
             self, S.CHOOSE_FILES_DIALOG, str(self._last_dir), f"{S.FILE_FILTER} ({patterns})"
         )
         if files:
@@ -475,7 +474,7 @@ class MainWindow(QMainWindow):
             self.select_item(first_new.id)
         elif existing is not None and len(expanded) == 1:
             # The same file again: show it, and process it again if the quick
-            # settings (mode, language, image clean-up) changed since.
+            # settings (language, image clean-up) changed since.
             self.select_item(existing.id)
             done = existing.status in (Status.DONE, Status.ERROR)
             if done and existing.options is not None and existing.options != self.options():
@@ -727,7 +726,7 @@ class MainWindow(QMainWindow):
                 return
         else:
             suggested = self._last_dir / name
-            path_str, _ = QFileDialog.getSaveFileName(
+            path_str = file_dialogs.save_file_name(
                 self, S.SAVE_DIALOG_TITLE, str(suggested), S.FORMAT_FILTERS[fmt]
             )
             if not path_str:
@@ -735,7 +734,7 @@ class MainWindow(QMainWindow):
             path = Path(path_str)
             if path.suffix.lower() != f".{fmt}":
                 path = path.with_name(path.name + f".{fmt}")
-        # Either the native dialog or the question above confirmed overwriting.
+        # Either the save dialog or the question above confirmed overwriting.
         overwrite = path.exists()
         document = item.document
         self._last_dir = path.parent
@@ -877,7 +876,7 @@ class MainWindow(QMainWindow):
             ):
                 return
         else:
-            path_str, _ = QFileDialog.getSaveFileName(
+            path_str = file_dialogs.save_file_name(
                 self, S.SELECTION_SAVE_TITLE, str(self._last_dir / name), S.SELECTION_FILTERS
             )
             if not path_str:
@@ -894,7 +893,7 @@ class MainWindow(QMainWindow):
         buffer.close()
         self._last_dir = path.parent
         try:
-            # Either the native dialog or the question above confirmed overwriting.
+            # Either the save dialog or the question above confirmed overwriting.
             write_atomic(path, bytes(data.data()), overwrite=path.exists())
         except OSError:
             _log.error("Saving a page fragment failed (OSError)")

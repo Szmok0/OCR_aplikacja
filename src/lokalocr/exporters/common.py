@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import os
 import tempfile
+from collections.abc import Iterator
 from pathlib import Path
 
 from lokalocr.errors import ErrorCode, LokalOcrError
+from lokalocr.model import Document
+from lokalocr.textview import paragraphs
 
-__all__ = ["OutputExistsError", "default_output_name", "write_atomic"]
+__all__ = ["OutputExistsError", "default_output_name", "paragraph_lines", "write_atomic"]
 
 
 class OutputExistsError(LokalOcrError):
@@ -18,6 +21,18 @@ class OutputExistsError(LokalOcrError):
 def default_output_name(source: Path, extension: str) -> str:
     """``<name>_ocr.<ext>`` as required by §7.3 zone 6."""
     return f"{source.stem}_ocr.{extension.lstrip('.')}"
+
+
+def paragraph_lines(document: Document) -> Iterator[tuple[str, ...]]:
+    """The paragraphs of the "Tekst uproszczony" view, each as its non-empty lines.
+
+    DOCX, Markdown and HTML keep these lines apart inside one paragraph (addresses,
+    lists and totals keep their breaks).
+    """
+    for text in paragraphs(document):
+        lines = tuple(ln for ln in text.split("\n") if ln.strip())
+        if lines:
+            yield lines
 
 
 def write_atomic(path: Path, data: bytes, *, overwrite: bool = False) -> Path:

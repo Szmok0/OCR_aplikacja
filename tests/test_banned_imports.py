@@ -21,6 +21,16 @@ BANNED_MODULES = frozenset(
         "aiohttp",
         "urllib.request",
         "http.client",
+        "http.server",
+        "ftplib",
+        "smtplib",
+        "socketserver",
+        "xmlrpc",
+        "webbrowser",
+        "PySide6.QtNetwork",
+        "PySide6.QtWebEngineCore",
+        "PySide6.QtWebEngineWidgets",
+        "PySide6.QtWebSockets",
     }
 )
 

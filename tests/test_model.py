@@ -7,10 +7,7 @@ from lokalocr.model import (
     Document,
     Line,
     Page,
-    Table,
-    TableCell,
     block_text,
-    sections,
 )
 
 
@@ -42,22 +39,6 @@ def test_plain_text_and_word_count() -> None:
     assert doc.word_count() == 3
 
 
-def test_table_text_uses_grid() -> None:
-    table = Table(2, 2, [TableCell(0, 0, "a"), TableCell(0, 1, "b"), TableCell(1, 1, "d")])
-    assert block_text(Block(BlockType.TABLE, table=table)) == "a\tb\n\td"
-
-
-def test_sections_tree() -> None:
-    h1 = Block(BlockType.HEADING, "Tytuł", level=1)
-    h2a = Block(BlockType.HEADING, "A", level=2)
-    h2b = Block(BlockType.HEADING, "B", level=2)
-    h1b = Block(BlockType.HEADING, "Drugi", level=1)
-    pre = Block(BlockType.PARAGRAPH, "wstęp")
-    p1 = Block(BlockType.PARAGRAPH, "p1")
-    p2 = Block(BlockType.LIST_ITEM, "p2")
-    roots = sections(_doc(pre, h1, h2a, p1, h2b, p2, h1b))
-    assert [s.title for s in roots] == ["", "Tytuł", "Drugi"]
-    assert roots[0].blocks == [pre]
-    assert [c.title for c in roots[1].children] == ["A", "B"]
-    assert roots[1].children[0].blocks == [p1]
-    assert roots[1].children[1].blocks == [p2]
+def test_block_text_falls_back_to_lines() -> None:
+    block = Block(BlockType.PARAGRAPH, lines=[Line("Zażółć"), Line("gęślą jaźń")])
+    assert block_text(block) == "Zażółć\ngęślą jaźń"

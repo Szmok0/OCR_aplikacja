@@ -217,7 +217,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         def progress(event: ProgressEvent, prefix: str = prefix) -> None:
             # One line per page, when its OCR, layout analysis or PDF export starts.
-            if event.stage in ("ocr", "layout", "export") and event.page and event.percent < 100:
+            if event.stage in ("ocr", "export") and event.page and event.percent < 100:
                 _say(
                     f"{prefix}: strona {event.page}/{event.page_count} — "
                     f"{STAGE_LABELS[event.stage]}",

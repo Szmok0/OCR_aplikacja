@@ -46,7 +46,9 @@ Domyślna nazwa pliku to `<nazwa>_ocr.<rozszerzenie>`. Aplikacja **nigdy nie nad
 
 - Aplikacja **nie wykonuje żadnych połączeń sieciowych** — znacznik w nagłówku przypomina o tym stale.
 - Kolejka i miniatury istnieją tylko w pamięci. Po zamknięciu aplikacji nie zostaje lista ostatnio otwartych plików ani historia. Folder tymczasowy jest czyszczony przy uruchomieniu i zamknięciu.
+- Okno wyboru plików wygląda inaczej niż zwykłe okno Windows — celowo: okno systemowe dopisuje każdy otwarty i zapisany dokument do „Ostatnich plików” Eksploratora, a okno aplikacji tego nie robi i nie zapamiętuje odwiedzonych folderów.
 - Pliki wynikowe trafiają tylko tam, gdzie wskażesz.
+- Zapisany plik HTML ma zakaz pobierania czegokolwiek z sieci przy otwieraniu w przeglądarce.
 - Logi techniczne nie zawierają treści dokumentów ani nazw plików.
 - Skopiowany tekst trafia do schowka systemowego. W ustawieniach można włączyć automatyczne czyszczenie schowka po kilku minutach. Pamiętaj, że menedżery schowka mogą zachować własną kopię.
 

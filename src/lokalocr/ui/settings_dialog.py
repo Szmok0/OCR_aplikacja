@@ -14,7 +14,6 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QDialogButtonBox,
-    QFileDialog,
     QFormLayout,
     QFrame,
     QHBoxLayout,
@@ -34,7 +33,7 @@ from PySide6.QtWidgets import (
 from lokalocr import __version__, config, tempdir
 from lokalocr.config import PDF_DPI_CHOICES, Settings
 from lokalocr.docs import find_doc
-from lokalocr.ui import icons
+from lokalocr.ui import file_dialogs, icons
 from lokalocr.ui import strings_pl as S
 from lokalocr.ui.widgets.basic import ToggleSwitch, muted_label
 
@@ -362,7 +361,7 @@ class SettingsDialog(QDialog):
         self.output_btn.setEnabled(enabled)
 
     def _choose_output(self) -> None:
-        folder = QFileDialog.getExistingDirectory(
+        folder = file_dialogs.existing_directory(
             self, S.CHOOSE_FOLDER, self.output_edit.text() or str(Path.home())
         )
         if folder:
@@ -370,7 +369,7 @@ class SettingsDialog(QDialog):
             self.folder_radio.setChecked(True)
 
     def _choose_temp(self) -> None:
-        folder = QFileDialog.getExistingDirectory(
+        folder = file_dialogs.existing_directory(
             self, S.CHOOSE_FOLDER, self.temp_edit.text() or str(Path.home())
         )
         if folder:

@@ -71,6 +71,16 @@ ban-relative-imports = "all"
 "aiohttp".msg = "Network libraries are banned in LokalOCR (offline-only, see CLAUDE.md §6)."
 "urllib.request".msg = "Network access is banned in LokalOCR (offline-only, see CLAUDE.md §6)."
 "http.client".msg = "Network access is banned in LokalOCR (offline-only, see CLAUDE.md §6)."
+"http.server".msg = "Network access is banned in LokalOCR (offline-only, see CLAUDE.md §6)."
+"ftplib".msg = "Network access is banned in LokalOCR (offline-only, see CLAUDE.md §6)."
+"smtplib".msg = "Network access is banned in LokalOCR (offline-only, see CLAUDE.md §6)."
+"socketserver".msg = "Network access is banned in LokalOCR (offline-only, see CLAUDE.md §6)."
+"xmlrpc".msg = "Network access is banned in LokalOCR (offline-only, see CLAUDE.md §6)."
+"webbrowser".msg = "Network access is banned in LokalOCR (offline-only, see CLAUDE.md §6)."
+"PySide6.QtNetwork".msg = "Network access is banned in LokalOCR (offline-only, see CLAUDE.md §6)."
+"PySide6.QtWebEngineCore".msg = "Network access is banned in LokalOCR (offline-only, see CLAUDE.md §6)."
+"PySide6.QtWebEngineWidgets".msg = "Network access is banned in LokalOCR (offline-only, see CLAUDE.md §6)."
+"PySide6.QtWebSockets".msg = "Network access is banned in LokalOCR (offline-only, see CLAUDE.md §6)."
 
 [tool.ruff.lint.per-file-ignores]
 # Synthetic document text reads better unwrapped.

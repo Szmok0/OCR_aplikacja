@@ -1,13 +1,11 @@
-"""Markdown export: headings, lists, tables and figure links in full mode; paragraphs in basic."""
+"""Markdown export: the recognised paragraphs, with Markdown syntax escaped."""
 
 from __future__ import annotations
 
 import re
 from pathlib import Path
 
-from lokalocr.exporters.common import write_atomic
-from lokalocr.exporters.images import IMAGES_DIR, export_images, image_name
-from lokalocr.exporters.structure import items
+from lokalocr.exporters.common import paragraph_lines, write_atomic
 from lokalocr.model import Document
 
 __all__ = ["export_markdown", "to_markdown"]
@@ -22,43 +20,12 @@ def _escape(text: str) -> str:
     return _SPECIAL_AT_START.sub(lambda m: f"{m.group(1)}\\{m.group(2)}{m.group(3)}", text)
 
 
-def _cell(text: str) -> str:
-    return _escape(" ".join(text.split())).replace("|", "\\|")
-
-
-def to_markdown(document: Document, *, structure: bool = True, image_stem: str = "") -> str:
-    parts: list[str] = []
-    for item in items(document, structure=structure):
-        if item.kind == "heading":
-            parts.append(f"{'#' * min(item.level, 6)} {_escape(item.text)}")
-        elif item.kind == "list_item":
-            parts.append(f"- {_escape(item.text)}")
-        elif item.kind == "table" and item.rows:
-            cols = max(len(r) for r in item.rows)
-            rows = [list(r) + [""] * (cols - len(r)) for r in item.rows]
-            lines = ["| " + " | ".join(_cell(c) for c in rows[0]) + " |", "|" + "---|" * cols]
-            lines += ["| " + " | ".join(_cell(c) for c in r) + " |" for r in rows[1:]]
-            parts.append("\n".join(lines))
-        elif item.kind == "figure" and item.image_ref:
-            src = f"{IMAGES_DIR}/{image_name(image_stem, item.image_ref)}"
-            parts.append(f"![{_escape(item.text)}]({src})")
-        elif item.kind == "caption":
-            parts.append(f"*{_escape(item.text)}*")
-        else:
-            lines_ = item.lines or (item.text,)
-            # Two trailing spaces = hard line break inside a paragraph.
-            parts.append("  \n".join(_escape(ln) for ln in lines_))
-    # Consecutive list items form one list.
+def to_markdown(document: Document) -> str:
+    # Two trailing spaces = hard line break inside a paragraph.
+    parts = ["  \n".join(_escape(ln) for ln in lines) for lines in paragraph_lines(document)]
     text = "\n\n".join(parts)
-    text = re.sub(r"(^- .*)\n\n(?=- )", r"\1\n", text, flags=re.MULTILINE)
     return text + "\n" if text else ""
 
 
-def export_markdown(
-    document: Document, path: Path, *, structure: bool = True, overwrite: bool = False
-) -> Path:
-    data = to_markdown(document, structure=structure, image_stem=path.stem).encode("utf-8")
-    result = write_atomic(path, data, overwrite=overwrite)
-    if structure and document.mode == "full" and document.images:
-        export_images(document, path.parent / IMAGES_DIR, stem=path.stem, overwrite=overwrite)
-    return result
+def export_markdown(document: Document, path: Path, *, overwrite: bool = False) -> Path:
+    return write_atomic(path, to_markdown(document).encode("utf-8"), overwrite=overwrite)

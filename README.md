@@ -1,6 +1,6 @@
 # LokalOCR
 
-Desktopowa aplikacja do OCR i konwersji dokumentów (PDF, PNG, JPG, TIFF → tekst, DOCX, PDF z warstwą tekstową, Markdown, HTML), działająca **wyłącznie offline**.
+Desktopowa aplikacja do OCR i konwersji dokumentów (PDF, PNG, JPG, TIFF → tekst, DOCX, PDF z warstwą tekstową, Markdown, HTML), działająca **wyłącznie offline** — żadnych połączeń sieciowych, żadnych śladów dokumentów po zamknięciu (szczegóły: [`CLAUDE.md`](CLAUDE.md) §6, kontrola: [`docs/offline-checklist.md`](docs/offline-checklist.md)).
 
 ## Pobierz (Windows)
 
@@ -30,6 +30,6 @@ lokalocr --help
 
 Kody wyjścia: `0` — wszystko przetworzone, `1` — część plików się nie udała, `2` — błędne wywołanie lub brak plików, `3` — brak Tesseracta albo danych językowych, `130` — przerwano (Ctrl+C).
 
-Status: etap 7 — prototyp (pakiet Windows, autotest `--selftest`).
+Status: prototyp oddany właścicielowi (pakiet Windows, autotest `--selftest`); tylko OCR Tesseractem — tryb pełny (Docling) usunięty.
 
 Licencje komponentów: [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).

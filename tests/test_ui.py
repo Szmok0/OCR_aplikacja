@@ -146,6 +146,20 @@ def test_garbage_is_collected_only_in_gui_thread(qtbot: QtBot) -> None:
     qtbot.waitUntil(lambda: ref() is None, timeout=5000)  # collected by the GUI timer
 
 
+def test_no_network_capable_modules_are_loaded(qtbot: QtBot, files: Path) -> None:
+    import sys
+
+    from tests.test_banned_imports import BANNED_MODULES
+
+    window = make_window(qtbot, FakeEngine())
+    window.add_paths([files / "cv.png", files / "contract.pdf"])
+    wait_idle(qtbot, window)
+    loaded = sorted(
+        m for m in sys.modules if any(m == b or m.startswith(b + ".") for b in BANNED_MODULES)
+    )
+    assert loaded == []
+
+
 def test_queue_processes_files_sequentially(qtbot: QtBot, files: Path) -> None:
     engine = FakeEngine(delay=0.05)
     window = make_window(qtbot, engine)
@@ -653,6 +667,62 @@ def test_about_page_is_local_and_offline(qtbot: QtBot) -> None:
     assert not browser.openLinks() and not browser.openExternalLinks()
     assert "Lucide" in browser.toPlainText()
     assert dialog.credit_name.text() == "Jacek J."
+
+
+def test_file_dialogs_are_not_native(
+    qtbot: QtBot, files: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from lokalocr.ui import file_dialogs
+
+    window = make_window(qtbot, FakeEngine())
+    options: list[object] = []
+
+    def fake_open(*args: object) -> tuple[list[str], str]:
+        options.append(args[-1])
+        return [str(files / "cv.png")], ""
+
+    def fake_save(*args: object) -> tuple[str, str]:
+        options.append(args[-1])
+        return str(files / "wynik.txt"), ""
+
+    def fake_dir(*args: object) -> str:
+        options.append(args[-1])
+        return str(files)
+
+    monkeypatch.setattr(QFileDialog, "getOpenFileNames", fake_open)
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", fake_save)
+    monkeypatch.setattr(QFileDialog, "getExistingDirectory", fake_dir)
+    file_dialogs.open_file_names(window, "t", str(files), "*")
+    file_dialogs.save_file_name(window, "t", str(files), "*")
+    file_dialogs.existing_directory(window, "t", str(files))
+    # The native Windows dialog would add documents to the system's "Recent items".
+    assert len(options) == 3
+    for opt in options:
+        assert isinstance(opt, QFileDialog.Option)
+        assert opt & QFileDialog.Option.DontUseNativeDialog
+
+
+def test_file_dialogs_leave_no_folder_history(qtbot: QtBot, files: Path) -> None:
+    import shiboken6
+    from PySide6.QtCore import QSettings
+
+    from lokalocr.ui import file_dialogs
+
+    make_window(qtbot, FakeEngine())
+    before = {
+        k: QSettings(QSettings.Scope.UserScope, "QtProject").value(k)
+        for k in file_dialogs.HISTORY_KEYS
+    }
+    with file_dialogs.no_history():
+        dialog = QFileDialog(None, "t", str(files), "*.png")
+        dialog.setOptions(file_dialogs.OPTIONS)
+        dialog.selectFile(str(files / "cv.png"))
+        dialog.accept()
+        shiboken6.delete(dialog)  # the destructor writes the visited folder
+        visited = QSettings(QSettings.Scope.UserScope, "QtProject").value("FileDialog/lastVisited")
+        assert files.name in str(visited)
+    after = QSettings(QSettings.Scope.UserScope, "QtProject")
+    assert {k: after.value(k) for k in file_dialogs.HISTORY_KEYS} == before
 
 
 def test_help_window_shows_local_guide(qtbot: QtBot) -> None:

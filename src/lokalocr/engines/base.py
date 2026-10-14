@@ -1,4 +1,4 @@
-"""Engine interfaces (§3). A new engine is a new class implementing one of these."""
+"""Engine interface (§3). A new OCR engine is a new class implementing it."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from lokalocr.model import Page
 
 @runtime_checkable
 class OcrEngine(Protocol):
-    """Recognises text on a single page image (basic mode)."""
+    """Recognises text on a single page image."""
 
     name: str
 

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import _socket
 import logging
-import os
 import socket
 import threading
 
@@ -64,6 +63,15 @@ def test_udp_sendto_external_is_blocked() -> None:
         pytest.raises(NetworkBlockedError),
     ):
         s.sendto(b"x", EXTERNAL_V4)
+
+
+@pytest.mark.skipif(not hasattr(socket.socket, "sendmsg"), reason="no sendmsg on this platform")
+def test_udp_sendmsg_external_is_blocked() -> None:
+    with (
+        socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s,
+        pytest.raises(NetworkBlockedError),
+    ):
+        s.sendmsg([b"x"], [], 0, EXTERNAL_V4)  # type: ignore[attr-defined,unused-ignore]
 
 
 def test_create_connection_external_is_blocked() -> None:
@@ -134,11 +142,6 @@ def test_socketpair_is_allowed() -> None:
 )
 def test_local_name_resolution_is_allowed(host: str | None) -> None:
     assert socket.getaddrinfo(host, 80, type=socket.SOCK_STREAM)
-
-
-def test_offline_env_vars_are_set() -> None:
-    for key, value in netguard.OFFLINE_ENV.items():
-        assert os.environ.get(key) == value
 
 
 @pytest.mark.usefixtures("fresh_guard")
