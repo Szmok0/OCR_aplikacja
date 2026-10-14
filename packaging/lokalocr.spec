@@ -39,6 +39,29 @@ common = dict(
 gui = Analysis([str(ROOT / "packaging" / "launcher_gui.py")], **common)  # noqa: F821
 cli = Analysis([str(ROOT / "packaging" / "launcher_cli.py")], **common)  # noqa: F821
 
+# PyInstaller's Qt hooks also collect plugins the app never uses: the virtual
+# keyboard input context (pulls in QML/Quick and Qt6Network), the TUIO touch
+# plugin (listens on UDP) and network/TLS plugins. Leave them, and with them
+# Qt's network library, out of the package (§6). The app only needs QtCore,
+# QtGui, QtWidgets and QtSvg.
+_UNWANTED = (
+    "qt6network", "qt6qml", "qt6quick", "qt6virtualkeyboard", "qt6pdfquick",
+    "qtvirtualkeyboardplugin", "qtuiotouchplugin", "networkinformation", "/tls/",
+)
+
+
+def _wanted(entry):
+    name = entry[0].replace("\\", "/").lower()
+    return not any(part in name for part in _UNWANTED)
+
+
+for analysis in (gui, cli):
+    dropped = sorted(e[0] for e in analysis.binaries if not _wanted(e))
+    if dropped:
+        print("Left out of the package:", ", ".join(dropped))
+    analysis.binaries = [e for e in analysis.binaries if _wanted(e)]
+    analysis.datas = [e for e in analysis.datas if _wanted(e)]
+
 icon = str(RES / "app_icon.ico")
 gui_exe = EXE(  # noqa: F821
     PYZ(gui.pure),  # noqa: F821

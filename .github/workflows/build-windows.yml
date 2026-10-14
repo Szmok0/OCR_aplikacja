@@ -96,7 +96,7 @@ jobs:
       - name: No network-capable Qt modules in the package
         shell: pwsh
         run: |
-          $found = Get-ChildItem dist\LokalOCR -Recurse -Include "QtNetwork*.pyd", "Qt6Network*.dll", "QtWebEngine*", "Qt6WebEngine*", "QtWebSockets*", "Qt6WebSockets*", "qopensslbackend*", "qschannelbackend*", "qnetworklistmanager*"
+          $found = Get-ChildItem dist\LokalOCR -Recurse -Include "QtNetwork*.pyd", "Qt6Network*.dll", "QtWebEngine*", "Qt6WebEngine*", "QtWebSockets*", "Qt6WebSockets*", "qopensslbackend*", "qschannelbackend*", "qcertonlybackend*", "qnetworklistmanager*", "qtuiotouchplugin*"
           if ($found) { $found | ForEach-Object { $_.FullName }; throw "network-capable Qt modules were bundled" }
           "OK: no QtNetwork / WebEngine / WebSockets / TLS plugins in the package"
 
