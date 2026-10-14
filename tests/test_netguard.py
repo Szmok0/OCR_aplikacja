@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import _socket
 import logging
-import os
 import socket
 import threading
 
@@ -143,11 +142,6 @@ def test_socketpair_is_allowed() -> None:
 )
 def test_local_name_resolution_is_allowed(host: str | None) -> None:
     assert socket.getaddrinfo(host, 80, type=socket.SOCK_STREAM)
-
-
-def test_offline_env_vars_are_set() -> None:
-    for key, value in netguard.OFFLINE_ENV.items():
-        assert os.environ.get(key) == value
 
 
 @pytest.mark.usefixtures("fresh_guard")

@@ -1,13 +1,14 @@
 """Process-wide network guard (CLAUDE.md §6.1-6.2).
 
 ``install()`` must run at process start, before any other LokalOCR import that
-could pull in third-party libraries. It:
+could pull in third-party libraries. It patches the ``socket`` module so that
+only loopback / local IPC traffic is allowed; every other attempt raises
+:class:`NetworkBlockedError` and is logged (destination only, never document
+content).
 
-* sets offline environment variables for libraries that honour them
-  (Hugging Face Hub, Transformers, Datasets),
-* patches the ``socket`` module so that only loopback / local IPC traffic is
-  allowed; every other attempt raises :class:`NetworkBlockedError` and is
-  logged (destination only, never document content).
+Native code does not go through ``socket``; it is kept offline by other means
+(see CLAUDE.md §6): Tesseract reads the image from stdin, PDFium and Qt get no
+network module (QtNetwork is neither imported nor bundled).
 
 Developer scripts may opt out with ``LOKALOCR_ALLOW_NET=1``. The application
 itself never sets it.
@@ -25,7 +26,6 @@ from typing import Any
 
 __all__ = [
     "ALLOW_NET_ENV",
-    "OFFLINE_ENV",
     "NetworkBlockedError",
     "install",
     "is_installed",
@@ -33,15 +33,6 @@ __all__ = [
 ]
 
 ALLOW_NET_ENV = "LOKALOCR_ALLOW_NET"
-
-# Libraries that look for these read them at import time, so they are set
-# before anything else gets imported.
-OFFLINE_ENV: dict[str, str] = {
-    "HF_HUB_OFFLINE": "1",
-    "HF_HUB_DISABLE_TELEMETRY": "1",
-    "TRANSFORMERS_OFFLINE": "1",
-    "HF_DATASETS_OFFLINE": "1",
-}
 
 _LOCAL_HOSTNAMES = frozenset({"localhost", "localhost.localdomain", "ip6-localhost"})
 
@@ -170,9 +161,6 @@ def install() -> bool:
 
     Safe to call more than once.
     """
-    for key, value in OFFLINE_ENV.items():
-        os.environ.setdefault(key, value)
-
     if os.environ.get(ALLOW_NET_ENV) == "1":
         _log.warning("Network guard disabled by %s=1 (developer scripts only)", ALLOW_NET_ENV)
         return False

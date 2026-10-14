@@ -32,7 +32,7 @@ __all__ = [
 
 _log = logging.getLogger(__name__)
 
-Stage = Literal["loading", "preprocessing", "ocr", "layout", "export"]
+Stage = Literal["loading", "preprocessing", "ocr", "export"]
 
 LANGUAGES: tuple[str, ...] = ("pol+eng", "pol", "eng")
 

@@ -40,7 +40,7 @@ Uruchamia kolejno: `ruff check`, `ruff format --check`, `mypy` (tryb strict), `p
 
 ## Tesseract (od etapu 1)
 
-Tryb podstawowy wymaga Tesseracta 5 z danymi `pol` i `eng`.
+Aplikacja wymaga Tesseracta 5 z danymi `pol` i `eng`.
 
 Debian/Ubuntu:
 

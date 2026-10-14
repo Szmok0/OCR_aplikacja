@@ -37,7 +37,6 @@ STAGE_LABELS: dict[str, str] = {
     "loading": "Wczytywanie pliku…",
     "preprocessing": "Obróbka obrazu…",
     "ocr": "Rozpoznawanie tekstu (OCR)…",
-    "layout": "Analiza układu…",
     "export": "Eksport…",
 }
 

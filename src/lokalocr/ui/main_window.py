@@ -474,7 +474,7 @@ class MainWindow(QMainWindow):
             self.select_item(first_new.id)
         elif existing is not None and len(expanded) == 1:
             # The same file again: show it, and process it again if the quick
-            # settings (mode, language, image clean-up) changed since.
+            # settings (language, image clean-up) changed since.
             self.select_item(existing.id)
             done = existing.status in (Status.DONE, Status.ERROR)
             if done and existing.options is not None and existing.options != self.options():
