@@ -11,6 +11,7 @@ from lokalocr import netguard
 netguard.install()
 
 import gc  # noqa: E402
+import itertools  # noqa: E402
 import sys  # noqa: E402
 from collections.abc import Sequence  # noqa: E402
 from pathlib import Path  # noqa: E402
@@ -33,14 +34,14 @@ def _engine() -> OcrEngine:
 
 
 GC_INTERVAL_MS = 500
+GC_FULL_EVERY = 20  # ticks: a full collection about every 10 s
+_gc_ticks = itertools.count(1)
 
 
 def _collect_garbage() -> None:
-    # Same generational thresholds as Python's automatic collector.
-    count0, count1, count2 = gc.get_count()
-    threshold0, threshold1, threshold2 = gc.get_threshold()
-    if count0 > threshold0:
-        gc.collect(2 if count2 > threshold2 else 1 if count1 > threshold1 else 0)
+    # Young objects on every tick (cheap), everything now and then. Does not rely
+    # on gc.get_count(), whose meaning differs between Python versions.
+    gc.collect(2 if next(_gc_ticks) % GC_FULL_EVERY == 0 else 0)
 
 
 def _collect_garbage_in_gui_thread(app: QObject) -> None:

@@ -143,9 +143,7 @@ def test_garbage_is_collected_only_in_gui_thread(qtbot: QtBot) -> None:
     node.self_ref = node  # a reference cycle: only the cyclic collector frees it
     ref = weakref.ref(node)
     del node
-    junk: list[list[int]] = [[] for _ in range(gc.get_threshold()[0] + 1)]  # trips the threshold
     qtbot.waitUntil(lambda: ref() is None, timeout=5000)  # collected by the GUI timer
-    del junk
 
 
 def test_queue_processes_files_sequentially(qtbot: QtBot, files: Path) -> None:
