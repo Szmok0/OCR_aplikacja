@@ -78,3 +78,16 @@ def test_multipage_progress_and_cancel(engine: DoclingEngine, tmp_path: Path) ->
     threading.Timer(1.0, cancel.set).start()
     with pytest.raises(CancelledError):
         engine.analyze(path, "pol+eng", cancel=cancel)
+
+
+def test_selftest_full_extracts_the_photo(tmp_path: Path) -> None:
+    import json
+
+    from lokalocr import selftest
+    from lokalocr.ui.app import create_app
+
+    create_app(["test"])
+    report_path = tmp_path / "report.json"
+    assert selftest.run(report_path, full=True) == 0
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["full_ok"] is True and report["full_images"] >= 1

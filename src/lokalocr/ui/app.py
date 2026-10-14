@@ -57,7 +57,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         from lokalocr.selftest import run
 
         create_app(["lokalocr", "-platform", "offscreen"])
-        return run(Path(args[1]) if len(args) > 1 else None)
+        rest = [a for a in args[1:] if a != "--full"]
+        return run(Path(rest[0]) if rest else None, full="--full" in args)
     settings = config.load()
     logsetup.configure(settings.log_level)
     tempdir.set_root(Path(settings.temp_dir) if settings.temp_dir else None)
