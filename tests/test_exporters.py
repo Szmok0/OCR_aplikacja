@@ -6,47 +6,24 @@ from pathlib import Path
 import pypdfium2 as pdfium
 import pytest
 from docx import Document as DocxDocument
-from PIL import Image
 
 import make_fixtures as fx
 from lokalocr.exporters.common import OutputExistsError
 from lokalocr.exporters.docx import export_docx, to_docx_bytes
-from lokalocr.exporters.html import to_html
+from lokalocr.exporters.html import CSP, to_html
 from lokalocr.exporters.markdown import to_markdown
-from lokalocr.model import BBox, Block, BlockType, Document, Line, Page, Table, TableCell
+from lokalocr.model import BBox, Block, BlockType, Document, Line, Page
 from measure_cer import cer
 
 
-def _png() -> bytes:
-    buf = io.BytesIO()
-    Image.new("RGB", (40, 30), (10, 100, 240)).save(buf, "PNG")
-    return buf.getvalue()
-
-
-def full_document() -> Document:
-    table = Table(
-        2,
-        2,
-        [
-            TableCell(0, 0, "Nazwa", header=True),
-            TableCell(0, 1, "Cena"),
-            TableCell(1, 0, "Żółte segregatory"),
-            TableCell(1, 1, "35,50 | zł"),
-        ],
-    )
+def tricky_document() -> Document:
+    """Text that would read as markup in Markdown or HTML."""
     blocks = [
-        Block(BlockType.HEADING, "Zofia Przykładowa", level=1),
         Block(BlockType.PARAGRAPH, "Księgowa z doświadczeniem *gwiazdka* i [nawias]."),
-        Block(BlockType.HEADING, "Doświadczenie", level=2),
-        Block(BlockType.LIST_ITEM, "Rozliczenia VAT"),
-        Block(BlockType.LIST_ITEM, "Płace <i> & kadry"),
-        Block(BlockType.TABLE, table=table),
-        Block(BlockType.FIGURE, "Zdjęcie", image_ref="figure_1.png"),
-        Block(BlockType.CAPTION, "Rys. 1. Zdjęcie profilowe"),
+        Block(BlockType.PARAGRAPH, "Płace <i> & kadry <script>alert(1)</script>"),
+        Block(BlockType.PARAGRAPH, '<img src="https://example.com/x.png">'),
     ]
-    return Document(
-        pages=[Page(1, 100, 100, 300, blocks)], mode="full", images={"figure_1.png": _png()}
-    )
+    return Document(pages=[Page(1, 100, 100, 300, blocks)])
 
 
 def basic_document() -> Document:
@@ -75,24 +52,11 @@ def basic_document() -> Document:
     )
 
 
-def test_docx_structure(tmp_path: Path) -> None:
-    path = export_docx(full_document(), tmp_path / "a.docx")
-    doc = DocxDocument(str(path))
-    styles = [(p.style.name if p.style else "", p.text) for p in doc.paragraphs if p.text]
-    assert ("Heading 1", "Zofia Przykładowa") in styles
-    assert ("Heading 2", "Doświadczenie") in styles
-    assert ("List Bullet", "Rozliczenia VAT") in styles
-    assert ("Caption", "Rys. 1. Zdjęcie profilowe") in styles
-    assert len(doc.tables) == 1
-    assert doc.tables[0].cell(1, 0).text == "Żółte segregatory"
-    assert len(doc.inline_shapes) == 1
-
-
-def test_docx_without_structure_is_plain_paragraphs() -> None:
-    doc = DocxDocument(io.BytesIO(to_docx_bytes(full_document(), structure=False)))
+def test_docx_is_plain_paragraphs(tmp_path: Path) -> None:
+    doc = DocxDocument(str(export_docx(tricky_document(), tmp_path / "a.docx")))
     assert not doc.tables and not doc.inline_shapes
     assert {p.style.name if p.style else "" for p in doc.paragraphs} == {"Normal"}
-    assert any("Żółte segregatory" in p.text for p in doc.paragraphs)
+    assert doc.paragraphs[1].text == "Płace <i> & kadry <script>alert(1)</script>"
 
 
 def test_docx_basic_keeps_address_lines() -> None:
@@ -110,15 +74,9 @@ def test_docx_never_overwrites(tmp_path: Path) -> None:
     assert target.read_bytes() == b"old"
 
 
-def test_markdown_structure_and_escaping() -> None:
-    md = to_markdown(full_document())
-    assert "# Zofia Przykładowa" in md
-    assert "## Doświadczenie" in md
-    assert "- Rozliczenia VAT\n- Płace <i> & kadry" in md
+def test_markdown_escaping() -> None:
+    md = to_markdown(tricky_document())
     assert "\\*gwiazdka\\*" in md and "\\[nawias\\]" in md
-    assert "| Nazwa | Cena |" in md and "35,50 \\| zł" in md
-    assert "![Zdjęcie](obrazy/figure_1.png)" in md
-    assert "obrazy/cv_figure_1.png" in to_markdown(full_document(), image_stem="cv")
 
 
 def test_markdown_escapes_line_start_markers() -> None:
@@ -132,14 +90,14 @@ def test_markdown_basic_line_breaks() -> None:
     )
 
 
-def test_html_structure_and_escaping() -> None:
-    html = to_html(full_document(), title="cv <x>")
+def test_html_escaping_and_no_external_resources() -> None:
+    html = to_html(tricky_document(), title="cv <x>")
     assert '<meta charset="utf-8">' in html and "<title>cv &lt;x&gt;</title>" in html
-    assert "<h1>Zofia Przykładowa</h1>" in html
-    assert "<ul>\n  <li>Rozliczenia VAT</li>\n  <li>Płace &lt;i&gt; &amp; kadry</li>\n</ul>" in html
-    assert "<th>Nazwa</th>" in html and "<td>Żółte segregatory</td>" in html
-    assert '<img src="obrazy/figure_1.png" alt="Zdjęcie">' in html
-    assert "http" not in html  # no external resources
+    assert "<p>Płace &lt;i&gt; &amp; kadry &lt;script&gt;alert(1)&lt;/script&gt;</p>" in html
+    assert "<script" not in html and "<img" not in html
+    # The browser may not load anything when the file is opened (§6).
+    assert f'<meta http-equiv="Content-Security-Policy" content="{CSP}">' in html
+    assert CSP.startswith("default-src 'none'")
 
 
 def test_html_basic_paragraphs() -> None:
@@ -176,28 +134,3 @@ def test_searchable_pdf(tmp_path: Path) -> None:
         pdf.close()
     # JPEG-embedded pages stay small.
     assert out.stat().st_size < 1_000_000 * 2
-
-
-def test_markdown_and_html_write_images_folder(tmp_path: Path) -> None:
-    from lokalocr.exporters.html import export_html
-    from lokalocr.exporters.markdown import export_markdown
-
-    export_markdown(full_document(), tmp_path / "cv_ocr.md")
-    export_html(full_document(), tmp_path / "cv_ocr.html")
-    assert (tmp_path / "obrazy" / "cv_ocr_figure_1.png").read_bytes().startswith(b"\x89PNG")
-    html = (tmp_path / "cv_ocr.html").read_text(encoding="utf-8")
-    assert 'src="obrazy/cv_ocr_figure_1.png"' in html
-
-
-def test_images_never_overwritten_silently(tmp_path: Path) -> None:
-    from lokalocr.exporters.images import export_images
-
-    folder = tmp_path / "obrazy"
-    export_images(full_document(), folder, stem="a")
-    export_images(full_document(), folder, stem="a")  # identical content: fine
-    (folder / "a_figure_1.png").write_bytes(b"other image")
-    with pytest.raises(OutputExistsError):
-        export_images(full_document(), folder, stem="a")
-    export_images(full_document(), folder, stem="a", overwrite=True)
-    export_images(full_document(), folder, stem="b")
-    assert sorted(p.name for p in folder.iterdir()) == ["a_figure_1.png", "b_figure_1.png"]

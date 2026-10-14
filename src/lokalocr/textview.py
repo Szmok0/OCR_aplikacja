@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from statistics import median
 from typing import Literal
 
-from lokalocr.model import Block, BlockType, Document, Line, Page, block_text
+from lokalocr.model import Block, Document, Line, Page, block_text
 
 __all__ = ["TextLayout", "original_layout", "paragraphs", "render", "simplified"]
 
@@ -117,8 +117,6 @@ def _is_wrapped(line: Line, next_line: Line, block: Block) -> bool:
 
 
 def simplified_block(block: Block) -> str:
-    if block.type is BlockType.TABLE:
-        return block_text(block)
     if not block.lines:
         return merge_lines(block.text.splitlines())
     lines = block.lines
@@ -132,8 +130,6 @@ def simplified_block(block: Block) -> str:
 
 def _continues(prev: Block, block: Block) -> bool:
     """Tesseract sometimes splits one paragraph into two blocks; detect that."""
-    if prev.type is not BlockType.PARAGRAPH or block.type is not BlockType.PARAGRAPH:
-        return False
     if not prev.lines or not block.lines:
         return False
     return block.lines[0].text[:1].islower() and _is_wrapped(prev.lines[-1], block.lines[0], prev)

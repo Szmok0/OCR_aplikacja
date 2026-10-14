@@ -18,7 +18,7 @@ from typing import Literal
 from lokalocr.engines.base import OcrEngine
 from lokalocr.errors import CancelledError, EmptyResultError
 from lokalocr.loader import open_document
-from lokalocr.model import Document, Mode, Page
+from lokalocr.model import Document, Page
 from lokalocr.preprocess import PreprocessOptions, preprocess
 
 __all__ = [
@@ -52,7 +52,6 @@ ProgressCallback = Callable[[ProgressEvent], None]
 @dataclass(frozen=True, slots=True)
 class ProcessOptions:
     lang: str = "pol+eng"
-    mode: Mode = "basic"
     pdf_dpi: int = 300
     preprocess: PreprocessOptions = field(default_factory=PreprocessOptions)
 
@@ -107,13 +106,13 @@ class Pipeline:
                 raise CancelledError("processing cancelled")
 
         started = time.monotonic()
-        document = Document(lang=opts.lang, mode=opts.mode)
+        document = Document(lang=opts.lang)
         notify(ProgressEvent("loading", 0, 0, 0.0, None))
         with open_document(path) as source:
             total = source.page_count
             _log.info(
-                "Processing started: format=%s pages=%d mode=%s workers=%d",
-                source.format, total, opts.mode, self.workers,
+                "Processing started: format=%s pages=%d workers=%d",
+                source.format, total, self.workers,
             )  # fmt: skip
             pages: list[Page | None] = [None] * total
             done = 0

@@ -125,8 +125,5 @@ class QueueModel(QAbstractListModel):
         self._items.clear()
         self.endResetModel()
 
-    def next_waiting(self) -> QueueItem | None:
-        return next((i for i in self._items if i.status is Status.WAITING), None)
-
     def processing(self) -> QueueItem | None:
         return next((i for i in self._items if i.status is Status.PROCESSING), None)

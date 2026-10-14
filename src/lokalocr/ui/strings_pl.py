@@ -100,7 +100,6 @@ OCR_LANGUAGE = "Język OCR"
 AUTO_PREPROCESS = "Automatyczna obróbka obrazu"
 AUTO_PREPROCESS_TIP = "Prostowanie, usuwanie szumów i poprawa kontrastu przed rozpoznaniem tekstu"
 
-WORKSPACE_EMPTY_TITLE = "Podgląd strony"
 WORKSPACE_EMPTY_HINT = "Podgląd oryginału pojawi się tutaj po dodaniu pliku."
 
 LAYOUT_ORIGINAL = "Oryginalny układ"
@@ -131,10 +130,7 @@ CANCEL_KEEP = "Zostaw w kolejce"
 CANCEL_REMOVE = "Usuń z kolejki"
 CANCEL_CONTINUE = "Kontynuuj"
 
-SAVE_TXT = "Zapisz jako TXT"
-SAVE_TXT_TIP = "Zapisz widoczny tekst do pliku (Ctrl+S)"
 SAVE_DIALOG_TITLE = "Zapisz wynik"
-FILTER_TXT = "Plik tekstowy"
 SAVE_FAILED = (
     "Nie udało się zapisać pliku. Sprawdź, czy folder istnieje i czy masz do niego dostęp."
 )
@@ -246,7 +242,6 @@ FORMAT_TIPS: dict[str, str] = {
     "md": "Markdown — tekst z prostym formatowaniem",
     "html": "Strona HTML do otwarcia w przeglądarce (bez zasobów z internetu)",
 }
-SAVE_AS_MENU = "Zapisz jako"
 EXPORTING_TITLE = "Trwa zapisywanie…"
 EXPORT_CANCELLED = "Zapis przerwany."
 EXPORT_BUSY = "Trwa zapisywanie innego pliku. Poczekaj na jego zakończenie."
