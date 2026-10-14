@@ -256,6 +256,40 @@ def test_duplicates_are_ignored(qtbot: QtBot, files: Path) -> None:
     assert len(window.queue) == 1
 
 
+def test_new_file_is_selected_and_shown(qtbot: QtBot, files: Path) -> None:
+    window = make_window(qtbot, FakeEngine())
+    window.add_paths([files / "cv.png"])
+    wait_idle(qtbot, window)
+    window.add_paths([files / "invoice.png"])
+    current = window.current_item()
+    assert current is not None and current.path.name == "invoice.png"
+
+
+def test_readding_a_file_reprocesses_it_with_changed_settings(qtbot: QtBot, files: Path) -> None:
+    engine = FakeEngine()
+    window = make_window(qtbot, engine)
+    window.add_paths([files / "cv.png"])
+    wait_idle(qtbot, window)
+    window.add_paths([files / "invoice.png"])
+    wait_idle(qtbot, window)
+    calls = engine.calls
+    # Same settings: nothing to redo, the file is just shown again.
+    window.add_paths([files / "cv.png"])
+    assert window.current_item().path.name == "cv.png"  # type: ignore[union-attr]
+    assert window.toast.text.text() == S.ALREADY_IN_QUEUE
+    wait_idle(qtbot, window)
+    assert engine.calls == calls
+    # Changed language: the user expects the new settings to apply.
+    window.lang_combo.setCurrentIndex(
+        (window.lang_combo.currentIndex() + 1) % window.lang_combo.count()
+    )
+    window.add_paths([files / "cv.png"])
+    assert window.toast.text.text() == S.REPROCESSING_WITH_NEW_SETTINGS
+    wait_idle(qtbot, window)
+    assert engine.calls > calls
+    assert len(window.queue) == 2
+
+
 def test_save_txt(
     qtbot: QtBot,
     files: Path,
@@ -819,6 +853,30 @@ def test_full_mode_document(qtbot: QtBot, files: Path) -> None:
     assert window.open_images_btn.isEnabled()
 
 
+def test_mode_switch_offers_to_process_the_shown_file_again(qtbot: QtBot, files: Path) -> None:
+    window = make_full_window(qtbot)
+    window.add_paths([files / "cv.png"])
+    wait_idle(qtbot, window)
+    item = window.queue.items()[0]
+
+    def mode() -> str:
+        return item.document.mode if item.document is not None else ""
+
+    assert mode() == "basic"
+    assert "Tryb: podstawowy" in window.result.status.text()
+
+    window.full_radio.setChecked(True)
+    assert window.toast.isVisible()
+    assert window.toast.text.text() == S.mode_differs("basic")
+    assert window.toast.action.text() == S.reprocess_in_mode("full")
+    window.toast.action.click()
+    wait_idle(qtbot, window)
+    assert mode() == "full"
+    assert "Tryb: pełny" in window.result.status.text()
+    assert window.toast.text.text() == S.images_found(1)
+    assert window.tabs.isTabEnabled(2)
+
+
 def test_structure_window(qtbot: QtBot, files: Path) -> None:
     window = make_full_window(qtbot)
     window.full_radio.setChecked(True)
@@ -908,3 +966,17 @@ def test_full_mode_docx_has_structure(
     window.save("docx")
     plain = DocxDocument(str(out))
     assert not plain.tables and not plain.inline_shapes
+
+
+@pytest.mark.parametrize("name", ["light", "dark"])
+def test_toast_text_is_readable(qtbot: QtBot, name: theme.ThemeName) -> None:
+    window = make_window(qtbot, FakeEngine())
+    theme.apply(QApplication.instance(), name)  # type: ignore[arg-type]
+    window.toast.show_message("Zapisano plik.", "Pokaż w folderze")
+    label = window.toast.text
+    label.ensurePolished()
+    # The toast is dark-on-light inverted: its text must use the background colour.
+    colour = label.palette().color(label.foregroundRole())
+    expected = theme.color("bg")
+    theme.apply(QApplication.instance(), "light")  # type: ignore[arg-type]
+    assert colour == expected

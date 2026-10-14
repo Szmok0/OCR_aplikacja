@@ -165,14 +165,36 @@ def page_of(page: int, total: int) -> str:
     return f"(strona {page} z {total})"
 
 
-def status_line(pages: int, words: int, lang: str, confidence: float | None) -> str:
+def status_line(
+    pages: int, words: int, lang: str, confidence: float | None, mode: str = "basic"
+) -> str:
     conf = f"{round(confidence * 100)}%" if confidence is not None else "—"
     page_word = "Strona 1 z 1" if pages == 1 else f"Stron: {pages}"
     words_word = plural_pl(words, "słowo", "słowa", "słów")
+    mode_name = MODE_FULL if mode == "full" else MODE_BASIC
     return (
-        f"{page_word} • Znaleziono {words} {words_word} • "
+        f"{page_word} • Znaleziono {words} {words_word} • Tryb: {mode_name.lower()} • "
         f"Język OCR: {LANGUAGE_NAMES.get(lang, lang)} • Pewność OCR: {conf}"
     )
+
+
+ALREADY_IN_QUEUE = "Ten plik jest już w kolejce — pokazuję jego wynik."
+REPROCESSING_WITH_NEW_SETTINGS = (
+    "Plik jest już w kolejce — przetwarzam go ponownie z nowymi ustawieniami."
+)
+
+
+def mode_differs(item_mode: str) -> str:
+    done = "pełnym" if item_mode == "full" else "podstawowym"
+    return f"Ten plik przetworzono w trybie {done}."
+
+
+def reprocess_in_mode(mode: str) -> str:
+    return "Przetwórz w trybie pełnym" if mode == "full" else "Przetwórz w trybie podstawowym"
+
+
+def images_found(n: int) -> str:
+    return f"Wykryto {n} {plural_pl(n, 'obraz', 'obrazy', 'obrazów')} — zobacz kartę „Obrazy”."
 
 
 def search_hits(current: int, total: int) -> str:

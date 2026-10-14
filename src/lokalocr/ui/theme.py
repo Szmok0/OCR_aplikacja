@@ -217,6 +217,7 @@ QScrollBar::handle:horizontal {{ background: {t.border}; border-radius: 4px; min
 QScrollBar::add-line, QScrollBar::sub-line {{ width: 0; height: 0; }}
 
 #Toast {{ background: {t.text}; color: {t.bg}; border-radius: 8px; padding: 8px 12px; }}
+#Toast QLabel {{ color: {t.bg}; }}
 #Toast QPushButton {{ color: {t.accent_soft}; background: transparent; border: none; font-weight: 600; }}
 #ErrorBanner {{ background: {t.danger_soft}; border: 1px solid {t.danger}; border-radius: 8px; }}
 """

@@ -95,8 +95,11 @@ class QueueModel(QAbstractListModel):
         return next((r for r, i in enumerate(self._items) if i.id == item_id), -1)
 
     def contains_path(self, path: Path) -> bool:
+        return self.find_path(path) is not None
+
+    def find_path(self, path: Path) -> QueueItem | None:
         resolved = path.resolve()
-        return any(i.path.resolve() == resolved for i in self._items)
+        return next((i for i in self._items if i.path.resolve() == resolved), None)
 
     def changed(self, item_id: int) -> None:
         row = self.row_of(item_id)
