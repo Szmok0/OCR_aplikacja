@@ -259,6 +259,7 @@ class PagePreview(QFrame):
         self._overlay_visible = False
         self._highlight: BBox | None = None
         self._skew = 0.0
+        self._shown: tuple[Path, int] | None = None  # page currently in the scene
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -395,8 +396,13 @@ class PagePreview(QFrame):
     def _selection_menu(self, pos: QPoint) -> None:
         menu = QMenu(self)
         menu.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
-        menu.addAction(icons.icon("icon_copy"), S.SELECTION_COPY, self.copy_selection_requested)
-        menu.addAction(icons.icon("icon_save"), S.SELECTION_SAVE, self.save_selection_requested)
+        # Slots must be callables: a bare SignalInstance raises TypeError when triggered.
+        menu.addAction(
+            icons.icon("icon_copy"), S.SELECTION_COPY, self.copy_selection_requested.emit
+        )
+        menu.addAction(
+            icons.icon("icon_save"), S.SELECTION_SAVE, self.save_selection_requested.emit
+        )
         menu.addSeparator()
         menu.addAction(S.SELECTION_CLEAR, self.view.clear_selection)
         menu.popup(pos)
@@ -456,6 +462,7 @@ class PagePreview(QFrame):
         self._pages = []
         self._page_count = 0
         self._index = 0
+        self._shown = None
         self.view.clear_selection()
         self.view.bounds = QRectF()
         self.view.scene().clear()
@@ -499,10 +506,14 @@ class PagePreview(QFrame):
         self.prev_btn.setEnabled(self._index > 0)
         self.next_btn.setEnabled(self._index < self._page_count - 1)
         key = (self._path, self._index)
-        if key in self._cache:
+        if key == self._shown and self._pixmap_item is not None:
+            # Same page again (the window refreshes it on queue updates): keep the
+            # scene, so the selection, zoom and deskew survive; overlays may change.
+            self._draw_overlay()
+        elif key in self._cache:
             self._cache.move_to_end(key)
             image, skew = self._cache[key]
-            self._show_image(image, skew)
+            self._show_image(key, image, skew)
         else:
             self._request(self._path, self._index)
         self.page_changed.emit(self._index)
@@ -541,16 +552,17 @@ class PagePreview(QFrame):
             self._cache[(path, index)] = (image, skew)
             while len(self._cache) > _CACHE_PAGES:
                 self._cache.popitem(last=False)
-        if path != self._path or index != self._index:
+        if path != self._path or index != self._index or (path, index) == self._shown:
             return
         if image is None:
             self.view.hide()
             self.placeholder.setText(S.PREVIEW_FAILED)
             self.placeholder.show()
             return
-        self._show_image(image, skew)
+        self._show_image((path, index), image, skew)
 
-    def _show_image(self, image: QImage, skew: float) -> None:
+    def _show_image(self, key: tuple[Path, int], image: QImage, skew: float) -> None:
+        self._shown = key
         self._skew = skew
         self.deskew_btn.setEnabled(abs(skew) >= 0.05)
         scene = self.view.scene()
