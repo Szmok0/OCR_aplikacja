@@ -120,6 +120,17 @@ def _guard_sendto(original: Callable[..., Any]) -> Callable[..., Any]:
     return guarded
 
 
+def _guard_sendmsg(original: Callable[..., Any]) -> Callable[..., Any]:
+    # sendmsg(buffers[, ancdata[, flags[, address]]]) takes positional arguments only.
+    def guarded(self: socket.socket, *args: Any) -> Any:
+        if len(args) >= 4 and args[3] is not None and not _is_local_address(args[3]):
+            raise _blocked("sendmsg", args[3])
+        return original(self, *args)
+
+    guarded.__wrapped__ = original  # type: ignore[attr-defined]
+    return guarded
+
+
 def _guard_create_connection(original: Callable[..., Any]) -> Callable[..., Any]:
     def guarded(address: Any, *args: Any, **kwargs: Any) -> Any:
         if not _is_local_address(address):
@@ -173,6 +184,8 @@ def install() -> bool:
         _patch(sock_cls, "connect", _guard_connect(sock_cls.connect, "connect"))
         _patch(sock_cls, "connect_ex", _guard_connect(sock_cls.connect_ex, "connect_ex"))
         _patch(sock_cls, "sendto", _guard_sendto(sock_cls.sendto))
+        if hasattr(sock_cls, "sendmsg"):  # not on Windows
+            _patch(sock_cls, "sendmsg", _guard_sendmsg(sock_cls.sendmsg))
         _patch(socket, "create_connection", _guard_create_connection(socket.create_connection))
         _patch(socket, "getaddrinfo", _guard_resolver(socket.getaddrinfo, "getaddrinfo"))
         _patch(socket, "gethostbyname", _guard_resolver(socket.gethostbyname, "gethostbyname"))

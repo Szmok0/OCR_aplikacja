@@ -66,6 +66,15 @@ def test_udp_sendto_external_is_blocked() -> None:
         s.sendto(b"x", EXTERNAL_V4)
 
 
+@pytest.mark.skipif(not hasattr(socket.socket, "sendmsg"), reason="no sendmsg on this platform")
+def test_udp_sendmsg_external_is_blocked() -> None:
+    with (
+        socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s,
+        pytest.raises(NetworkBlockedError),
+    ):
+        s.sendmsg([b"x"], [], 0, EXTERNAL_V4)  # type: ignore[attr-defined,unused-ignore]
+
+
 def test_create_connection_external_is_blocked() -> None:
     with pytest.raises(NetworkBlockedError):
         socket.create_connection((EXTERNAL_NAME, 443), timeout=1)

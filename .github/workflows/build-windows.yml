@@ -93,6 +93,13 @@ jobs:
           & "dist\LokalOCR\lokalocr-cli.exe" --version
           if ($LASTEXITCODE -ne 0) { throw "CLI failed" }
 
+      - name: No network-capable Qt modules in the package
+        shell: pwsh
+        run: |
+          $found = Get-ChildItem dist\LokalOCR -Recurse -Include "QtNetwork*.pyd", "Qt6Network*.dll", "QtWebEngine*", "Qt6WebEngine*", "QtWebSockets*", "Qt6WebSockets*", "qopensslbackend*", "qschannelbackend*", "qnetworklistmanager*"
+          if ($found) { $found | ForEach-Object { $_.FullName }; throw "network-capable Qt modules were bundled" }
+          "OK: no QtNetwork / WebEngine / WebSockets / TLS plugins in the package"
+
       - name: Add user documentation to the package
         shell: pwsh
         run: |

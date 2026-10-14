@@ -19,10 +19,13 @@ if TESSERACT:
     datas.append((TESSERACT, "tesseract"))
 
 hiddenimports = ["lokalocr.engines.tesseract"]
-# Heavy packages a developer environment may have installed: never bundle them.
+# Heavy packages a developer environment may have installed, and every Qt module
+# that can talk to the network (§6): never bundle them.
 excludes = [
     "tkinter", "matplotlib", "IPython", "jupyter", "notebook", "pytest",
     "torch", "torchvision", "transformers", "docling", "docling_core",
+    "PySide6.QtNetwork", "PySide6.QtWebEngineCore", "PySide6.QtWebEngineWidgets",
+    "PySide6.QtWebSockets", "PySide6.QtHttpServer", "PySide6.QtRemoteObjects",
 ]
 
 common = dict(
