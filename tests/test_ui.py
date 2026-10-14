@@ -13,6 +13,7 @@ import pytest
 pytest.importorskip("PySide6")
 
 from PIL import Image
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox
 from pytestqt.qtbot import QtBot
 
@@ -335,6 +336,105 @@ def test_preview_shows_pages_and_navigates(qtbot: QtBot, files: Path) -> None:
     assert preview.view.rotation == 90
 
 
+def _drag_select(
+    qtbot: QtBot, window: MainWindow, x0: float, y0: float, x1: float, y1: float
+) -> None:
+    """Drag a selection between two points given in page (scene) coordinates."""
+    from PySide6.QtCore import QPointF
+    from PySide6.QtTest import QTest
+
+    view = window.preview.view
+    viewport = view.viewport()
+    start = view.mapFromScene(QPointF(x0, y0))
+    end = view.mapFromScene(QPointF(x1, y1))
+    QTest.mousePress(viewport, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, start)
+    QTest.mouseMove(viewport, end)
+    QTest.mouseRelease(viewport, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, end)
+
+
+def test_select_area_copy_and_save(
+    qtbot: QtBot,
+    files: Path,
+    tmp_path_factory: pytest.TempPathFactory,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    window = make_window(qtbot, FakeEngine())
+    window.add_paths([files / "cv.png"])
+    wait_idle(qtbot, window)
+    preview = window.preview
+    qtbot.waitUntil(lambda: preview._pixmap_item is not None, timeout=5000)
+    preview.view.fit()
+    preview.select_btn.setChecked(True)
+    assert preview.view.select_mode and not preview.view.magnifier
+
+    bounds = preview.view.bounds
+    _drag_select(
+        qtbot,
+        window,
+        0.25 * bounds.width(),
+        0.1 * bounds.height(),
+        0.75 * bounds.width(),
+        0.3 * bounds.height(),
+    )
+    rect = preview.view.selection_rect()
+    assert rect is not None
+    assert rect.width() == pytest.approx(0.5 * bounds.width(), rel=0.05)
+
+    # The cut is taken from the full-resolution page, not from the preview.
+    with Image.open(files / "cv.png") as original:
+        full_w, full_h = original.size
+    image = preview.selection_image()
+    assert image is not None
+    assert image.width() == pytest.approx(0.5 * full_w, rel=0.05)
+    assert image.height() == pytest.approx(0.2 * full_h, rel=0.05)
+
+    window.copy_selection()
+    assert QApplication.clipboard().image().width() == image.width()
+
+    out = tmp_path_factory.mktemp("cut")
+    _save_to(monkeypatch, out / "zdjecie")
+    window.save_selection()
+    with Image.open(out / "zdjecie.png") as saved:
+        assert saved.size == (image.width(), image.height())
+    _save_to(monkeypatch, out / "zdjecie.jpg")
+    window.save_selection()
+    with Image.open(out / "zdjecie.jpg") as saved:
+        assert saved.format == "JPEG"
+
+
+def test_selection_tool_edge_cases(qtbot: QtBot, files: Path) -> None:
+    window = make_window(qtbot, FakeEngine())
+    window.add_paths([files / "contract.pdf"])
+    wait_idle(qtbot, window)
+    preview = window.preview
+    qtbot.waitUntil(lambda: preview._pixmap_item is not None, timeout=5000)
+    preview.select_btn.setChecked(True)
+    # A click without dragging leaves no selection.
+    _drag_select(qtbot, window, 100, 100, 101, 101)
+    assert preview.view.selection_rect() is None
+    # Dragging beyond the page is clamped to the page.
+    bounds = preview.view.bounds
+    _drag_select(qtbot, window, 50, 50, bounds.width() + 500, bounds.height() + 500)
+    rect = preview.view.selection_rect()
+    assert rect is not None and rect.right() <= bounds.right()
+    # A 90 degree rotation of the preview is applied to the cut.
+    preview.rotate(90)
+    image = preview.selection_image()
+    assert (
+        image is not None and image.height() > image.width() * (rect.width() / rect.height()) * 0.9
+    )
+    # Another page or another tool drops the selection.
+    preview.next_page()
+    qtbot.waitUntil(lambda: (files / "contract.pdf", 1) in preview._cache, timeout=5000)
+    assert preview.view.selection_rect() is None
+    _drag_select(qtbot, window, 50, 50, 300, 300)
+    assert preview.view.selection_rect() is not None
+    preview.hand_btn.setChecked(True)
+    assert not preview.select_btn.isChecked()
+    assert preview.view.selection_rect() is None
+    assert window.preview.selection_image() is None
+
+
 def test_tabs_switch_workspace(qtbot: QtBot, files: Path) -> None:
     window = make_window(qtbot, FakeEngine())
     window.add_paths([files / "cv.png"])
@@ -398,7 +498,10 @@ def test_save_pdf_in_background(
     qtbot.waitUntil(lambda: not window.exporter.busy, timeout=10000)
     qtbot.waitUntil(lambda: out.exists(), timeout=5000)
     assert out.read_bytes().startswith(b"%PDF")
-    assert window.result.stack.currentIndex() == window.result.PAGE_RESULT
+    # The worker clears ``busy`` before its "finished" signal reaches the UI thread.
+    qtbot.waitUntil(
+        lambda: window.result.stack.currentIndex() == window.result.PAGE_RESULT, timeout=5000
+    )
 
 
 def test_cancel_pdf_export(

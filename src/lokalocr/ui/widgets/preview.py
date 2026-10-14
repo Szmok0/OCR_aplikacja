@@ -1,4 +1,4 @@
-"""Zone 4: page preview with zoom, pan, magnifier, rotation and deskew (§7.3, §7.11).
+"""Zone 4: page preview with zoom, pan, magnifier, rotation, deskew and area selection (§7.3).
 
 Pages are rendered in a background thread at a fixed preview resolution and
 kept in a small in-memory cache (never on disk, §6.5).
@@ -12,17 +12,20 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 
 import numpy as np
-from PySide6.QtCore import QEvent, QObject, QRectF, Qt, Signal
+from PySide6.QtCore import QEvent, QObject, QPoint, QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import (
     QBrush,
     QColor,
+    QContextMenuEvent,
     QImage,
     QIntValidator,
+    QKeyEvent,
     QMouseEvent,
     QNativeGestureEvent,
     QPainter,
     QPen,
     QPixmap,
+    QTransform,
     QWheelEvent,
 )
 from PySide6.QtWidgets import (
@@ -35,6 +38,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMenu,
     QToolButton,
     QVBoxLayout,
     QWidget,
@@ -55,6 +59,8 @@ PREVIEW_DPI = 120
 SCREEN_DPI = 96  # "100%" = physical page size at a standard screen density
 ZOOM_STEPS = (0.1, 0.25, 0.33, 0.5, 0.67, 0.75, 0.9, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0, 6.0, 8.0)
 _CACHE_PAGES = 8
+CROP_DPI = 300  # selections are cut from a fresh render, not from the preview
+_MIN_SELECTION = 8  # scene pixels (~1.7 mm at the preview resolution)
 
 
 class _Rendered(QObject):
@@ -62,9 +68,10 @@ class _Rendered(QObject):
 
 
 class PageView(QGraphicsView):
-    """Graphics view with wheel/pinch zoom and a magnifier tool."""
+    """Graphics view with wheel/pinch zoom, a magnifier and an area selection tool."""
 
     zoom_changed = Signal(float)
+    selection_finished = Signal(QPoint)  # global position for the action menu
 
     def __init__(self) -> None:
         super().__init__()
@@ -79,6 +86,10 @@ class PageView(QGraphicsView):
         self.zoom = 1.0  # relative to "100%"
         self.rotation = 0.0
         self.magnifier = False
+        self.select_mode = False
+        self.bounds = QRectF()  # page image rectangle in scene coordinates
+        self.selection: QGraphicsRectItem | None = None
+        self._origin: QPointF | None = None
         self.fit_mode = True
 
     def apply_transform(self) -> None:
@@ -133,7 +144,85 @@ class PageView(QGraphicsView):
             return True
         return super().viewportEvent(event)
 
+    # --- area selection ------------------------------------------------------------------
+
+    def _to_page(self, pos: QPointF) -> QPointF:
+        point = self.mapToScene(pos.toPoint())
+        b = self.bounds
+        return QPointF(
+            min(max(point.x(), b.left()), b.right()), min(max(point.y(), b.top()), b.bottom())
+        )
+
+    def clear_selection(self) -> None:
+        """Remove the selection (call before ``scene().clear()``, which deletes it)."""
+        if self.selection is not None:
+            self.scene().removeItem(self.selection)
+            self.selection = None
+        self._origin = None
+
+    def selection_rect(self) -> QRectF | None:
+        return self.selection.rect() if self.selection is not None else None
+
+    def _start_selection(self, pos: QPointF) -> None:
+        self.clear_selection()
+        self._origin = self._to_page(pos)
+        item = QGraphicsRectItem(QRectF(self._origin, self._origin))
+        accent = theme.color("accent")
+        pen = QPen(accent, 1.5, Qt.PenStyle.DashLine)
+        pen.setCosmetic(True)
+        item.setPen(pen)
+        fill = QColor(accent)
+        fill.setAlpha(40)
+        item.setBrush(fill)
+        item.setZValue(10)
+        self.scene().addItem(item)
+        self.selection = item
+
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:
+        if self._origin is not None and self.selection is not None:
+            self.selection.setRect(
+                QRectF(self._origin, self._to_page(event.position())).normalized()
+            )
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
+        if self._origin is not None and event.button() == Qt.MouseButton.LeftButton:
+            self._origin = None
+            rect = self.selection_rect()
+            if rect is None or min(rect.width(), rect.height()) < _MIN_SELECTION:
+                self.clear_selection()
+            else:
+                self.selection_finished.emit(event.globalPosition().toPoint())
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
+
+    def contextMenuEvent(self, event: QContextMenuEvent) -> None:
+        rect = self.selection_rect()
+        if rect is not None and rect.contains(self.mapToScene(event.pos())):
+            self.selection_finished.emit(event.globalPos())
+            event.accept()
+            return
+        super().contextMenuEvent(event)
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:
+        if event.key() == Qt.Key.Key_Escape and self.selection is not None:
+            self.clear_selection()
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
     def mousePressEvent(self, event: QMouseEvent) -> None:
+        if (
+            self.select_mode
+            and event.button() == Qt.MouseButton.LeftButton
+            and not self.bounds.isEmpty()
+        ):
+            self._start_selection(event.position())
+            event.accept()
+            return
         if self.magnifier and event.button() in (
             Qt.MouseButton.LeftButton,
             Qt.MouseButton.RightButton,
@@ -152,6 +241,8 @@ class PagePreview(QFrame):
     """Toolbar + page view. Call :meth:`show_document` with a file and its pages."""
 
     page_changed = Signal(int)
+    copy_selection_requested = Signal()
+    save_selection_requested = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -199,10 +290,14 @@ class PagePreview(QFrame):
         self.magnifier_btn = self._tool("icon_magnifier", S.MAGNIFIER_TOOL, None, checkable=True)
         tools = QButtonGroup(self)
         tools.setExclusive(False)
+        self.select_btn = self._tool("icon_crop", S.SELECT_TOOL, None, checkable=True)
         tools.addButton(self.hand_btn)
         tools.addButton(self.magnifier_btn)
+        tools.addButton(self.select_btn)
         self.hand_btn.toggled.connect(self._set_hand)
         self.magnifier_btn.toggled.connect(self._set_magnifier)
+        self.select_btn.toggled.connect(self._set_select)
+        self.view.selection_finished.connect(self._selection_menu)
         self.rotate_left_btn = self._tool(
             "icon_rotate_left", S.ROTATE_LEFT, lambda: self.rotate(-90)
         )
@@ -224,6 +319,7 @@ class PagePreview(QFrame):
             self.fit_btn,
             self.hand_btn,
             self.magnifier_btn,
+            self.select_btn,
             self.rotate_left_btn,
             self.rotate_right_btn,
             self.deskew_btn,
@@ -271,6 +367,7 @@ class PagePreview(QFrame):
     def _set_hand(self, on: bool) -> None:
         if on:
             self.magnifier_btn.setChecked(False)
+            self.select_btn.setChecked(False)
         self.view.setDragMode(
             QGraphicsView.DragMode.ScrollHandDrag if on else QGraphicsView.DragMode.NoDrag
         )
@@ -278,10 +375,65 @@ class PagePreview(QFrame):
     def _set_magnifier(self, on: bool) -> None:
         if on:
             self.hand_btn.setChecked(False)
+            self.select_btn.setChecked(False)
         self.view.magnifier = on
         self.view.viewport().setCursor(
             Qt.CursorShape.CrossCursor if on else Qt.CursorShape.ArrowCursor
         )
+
+    def _set_select(self, on: bool) -> None:
+        if on:
+            self.hand_btn.setChecked(False)
+            self.magnifier_btn.setChecked(False)
+        else:
+            self.view.clear_selection()
+        self.view.select_mode = on
+        self.view.viewport().setCursor(
+            Qt.CursorShape.CrossCursor if on else Qt.CursorShape.ArrowCursor
+        )
+
+    def _selection_menu(self, pos: QPoint) -> None:
+        menu = QMenu(self)
+        menu.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        menu.addAction(icons.icon("icon_copy"), S.SELECTION_COPY, self.copy_selection_requested)
+        menu.addAction(icons.icon("icon_save"), S.SELECTION_SAVE, self.save_selection_requested)
+        menu.addSeparator()
+        menu.addAction(S.SELECTION_CLEAR, self.view.clear_selection)
+        menu.popup(pos)
+
+    def selection_image(self) -> QImage | None:
+        """The selected area cut from the page rendered at :data:`CROP_DPI`.
+
+        PDF pages are rendered again at a higher resolution than the preview;
+        image files are cut at their own resolution. A rotation of the preview
+        by a multiple of 90 degrees is applied to the result.
+        """
+        rect = self.view.selection_rect()
+        if rect is None or self._path is None or self.view.bounds.isEmpty():
+            return None
+        bounds = self.view.bounds
+        try:
+            with open_document(self._path) as doc:
+                page = doc.render(self._index, CROP_DPI)
+        except LokalOcrError:
+            return None
+        width, height = page.image.size
+        box = (
+            round(rect.left() / bounds.width() * width),
+            round(rect.top() / bounds.height() * height),
+            round(rect.right() / bounds.width() * width),
+            round(rect.bottom() / bounds.height() * height),
+        )
+        if box[2] - box[0] < 1 or box[3] - box[1] < 1:
+            return None
+        image = pil_to_qimage(page.image.crop(box))
+        turns = round(self.view.rotation / 90)
+        if abs(self.view.rotation - turns * 90) < 0.01 and turns % 4:
+            image = image.transformed(QTransform().rotate(90 * (turns % 4)))
+        dots_per_metre = round(page.dpi / 0.0254)
+        image.setDotsPerMeterX(dots_per_metre)
+        image.setDotsPerMeterY(dots_per_metre)
+        return image
 
     def rotate(self, degrees: float) -> None:
         self.view.rotation = (self.view.rotation + degrees) % 360
@@ -304,6 +456,8 @@ class PagePreview(QFrame):
         self._pages = []
         self._page_count = 0
         self._index = 0
+        self.view.clear_selection()
+        self.view.bounds = QRectF()
         self.view.scene().clear()
         self._pixmap_item = None
         self._overlay_items = []
@@ -400,9 +554,11 @@ class PagePreview(QFrame):
         self._skew = skew
         self.deskew_btn.setEnabled(abs(skew) >= 0.05)
         scene = self.view.scene()
+        self.view.clear_selection()
         scene.clear()
         self._overlay_items = []
         self._pixmap_item = scene.addPixmap(QPixmap.fromImage(image))
+        self.view.bounds = QRectF(image.rect())
         scene.setSceneRect(QRectF(image.rect()).adjusted(-40, -40, 40, 40))
         self.view.show()
         self.placeholder.hide()

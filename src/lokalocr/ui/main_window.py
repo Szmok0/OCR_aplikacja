@@ -8,7 +8,18 @@ from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 
-from PySide6.QtCore import QModelIndex, QPoint, QSize, Qt, QTimer, QUrl, Signal
+from PySide6.QtCore import (
+    QBuffer,
+    QByteArray,
+    QIODevice,
+    QModelIndex,
+    QPoint,
+    QSize,
+    Qt,
+    QTimer,
+    QUrl,
+    Signal,
+)
 from PySide6.QtGui import (
     QCloseEvent,
     QDesktopServices,
@@ -53,7 +64,7 @@ from lokalocr import config, logsetup, tempdir
 from lokalocr.config import Settings
 from lokalocr.engines.base import OcrEngine, StructureEngine
 from lokalocr.errors import ErrorCode, LokalOcrError
-from lokalocr.exporters.common import OutputExistsError
+from lokalocr.exporters.common import OutputExistsError, write_atomic
 from lokalocr.exporters.docx import export_docx
 from lokalocr.exporters.html import export_html
 from lokalocr.exporters.images import IMAGES_DIR, export_images
@@ -148,6 +159,7 @@ class MainWindow(QMainWindow):
         tempdir.set_root(Path(self.settings.temp_dir) if self.settings.temp_dir else None)
         self._help: HelpWindow | None = None
         self._clipboard_text: str | None = None
+        self._clipboard_image: QImage | None = None
         self._clipboard_timer = QTimer(self)
         self._clipboard_timer.setSingleShot(True)
         self._clipboard_timer.timeout.connect(self._clear_clipboard)
@@ -377,6 +389,8 @@ class MainWindow(QMainWindow):
 
         self.workspace_stack = QStackedWidget()
         self.preview = PagePreview()
+        self.preview.copy_selection_requested.connect(self.copy_selection)
+        self.preview.save_selection_requested.connect(self.save_selection)
         self.workspace_stack.addWidget(self.preview)
         self.gallery = QListWidget()
         self.gallery.setObjectName("Gallery")
@@ -957,18 +971,94 @@ class MainWindow(QMainWindow):
 
     def _on_copied(self) -> None:
         self.toast.show_message(S.COPIED)
+        self._arm_clipboard_clear(text=QApplication.clipboard().text())
+
+    def _arm_clipboard_clear(self, *, text: str | None = None, image: QImage | None = None) -> None:
         minutes = self.settings.clipboard_clear_minutes
         if minutes > 0:
-            self._clipboard_text = QApplication.clipboard().text()
+            self._clipboard_text = text
+            self._clipboard_image = image
             self._clipboard_timer.start(minutes * 60_000)
 
     def _clear_clipboard(self) -> None:
         clipboard = QApplication.clipboard()
         # Only clear what we put there; the user may have copied something else since.
-        if self._clipboard_text is not None and clipboard.text() == self._clipboard_text:
+        ours = self._clipboard_text is not None and clipboard.text() == self._clipboard_text
+        if self._clipboard_image is not None:
+            rgb = QImage.Format.Format_RGB32
+            ours = ours or clipboard.ownsClipboard()
+            ours = ours or clipboard.image().convertToFormat(rgb) == (
+                self._clipboard_image.convertToFormat(rgb)
+            )
+        if ours:
             clipboard.clear()
             self.toast.show_message(S.CLIPBOARD_CLEARED)
         self._clipboard_text = None
+        self._clipboard_image = None
+
+    # --- area selection in the preview ---------------------------------------------------
+
+    def _selection_image(self) -> QImage | None:
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            image = self.preview.selection_image()
+        finally:
+            QApplication.restoreOverrideCursor()
+        if image is None:
+            self.toast.show_message(S.SELECTION_FAILED)
+        return image
+
+    def copy_selection(self) -> None:
+        """Copy the selected area of the page to the clipboard as an image."""
+        image = self._selection_image()
+        if image is None:
+            return
+        QApplication.clipboard().setImage(image)
+        self.toast.show_message(S.SELECTION_COPIED)
+        self._arm_clipboard_clear(image=image)
+
+    def save_selection(self) -> None:
+        """Save the selected area of the page as PNG or JPEG."""
+        item = self.current_item()
+        if item is None:
+            return
+        image = self._selection_image()
+        if image is None:
+            return
+        name = f"{item.path.stem}_wycinek_str{self.preview.index + 1}.png"
+        if self.settings.output_dir:
+            path = Path(self.settings.output_dir) / name
+            if (
+                path.exists()
+                and QMessageBox.question(self, S.APP_NAME, S.overwrite_question(path.name))
+                != QMessageBox.StandardButton.Yes
+            ):
+                return
+        else:
+            path_str, _ = QFileDialog.getSaveFileName(
+                self, S.SELECTION_SAVE_TITLE, str(self._last_dir / name), S.SELECTION_FILTERS
+            )
+            if not path_str:
+                return
+            path = Path(path_str)
+            if path.suffix.lower() not in (".png", ".jpg", ".jpeg"):
+                path = path.with_name(path.name + ".png")
+        jpeg = path.suffix.lower() in (".jpg", ".jpeg")
+        data = QByteArray()
+        buffer = QBuffer(data)
+        buffer.open(QIODevice.OpenModeFlag.WriteOnly)
+        # PySide6 accepts only str here, although its stubs declare bytes.
+        image.save(buffer, "JPEG" if jpeg else "PNG", 92 if jpeg else -1)  # type: ignore[call-overload]
+        buffer.close()
+        self._last_dir = path.parent
+        try:
+            # Either the native dialog or the question above confirmed overwriting.
+            write_atomic(path, bytes(data.data()), overwrite=path.exists())
+        except OSError:
+            _log.error("Saving a page fragment failed (OSError)")
+            QMessageBox.warning(self, S.APP_NAME, S.SAVE_FAILED)
+            return
+        self._saved(path)
 
     def _show_last_saved(self) -> None:
         if self._last_saved is not None:
